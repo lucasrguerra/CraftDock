@@ -1,0 +1,46 @@
+services:
+  craftdock-panel:
+    image: craftdock-panel:latest
+    container_name: craftdock-panel
+    ports:
+      - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./panel-data:/app/data
+      - mc-data:/minecraft/data
+    environment:
+      - NODE_ENV=production
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - MC_CONTAINER_NAME=craftdock-mc-server
+      - MC_DATA_PATH=/minecraft/data
+      - MC_EDITION=auto
+      - RCON_HOST=craftdock-mc-server
+      - RCON_PASSWORD=${RCON_PASSWORD}
+      - MAP_URL=${MAP_URL}
+    networks: [craftdock-net]
+    restart: unless-stopped
+
+  minecraft-server:
+    image: itzg/minecraft-server:latest   # or itzg/minecraft-bedrock-server
+    container_name: craftdock-mc-server
+    ports:
+      - "25565:25565"
+      - "19132:19132/udp"
+    volumes:
+      - mc-data:/data
+    environment:
+      - EULA=TRUE
+      - ENABLE_RCON=true
+      - RCON_PASSWORD=${RCON_PASSWORD}
+      - OVERRIDE_SERVER_PROPERTIES=false
+      - TYPE=PAPER
+      - VERSION=LATEST
+    networks: [craftdock-net]
+    restart: unless-stopped
+
+volumes:
+  mc-data:
+networks:
+  craftdock-net:
+    driver: bridge
