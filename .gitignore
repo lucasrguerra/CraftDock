@@ -1,0 +1,5 @@
+node_modules/
+.env
+panel-data/
+*.log
+coverage/
