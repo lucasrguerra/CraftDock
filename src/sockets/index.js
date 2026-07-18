@@ -1,0 +1,17 @@
+import { registerLogsSocket } from './logsSocket.js';
+import { registerStatusSocket } from './statusSocket.js';
+import { socketAuth } from '../middleware/auth.js';
+
+export function registerSockets(io, { dockerService, appState, sessionMiddleware }) {
+  const auth = socketAuth(sessionMiddleware);
+
+  const logs = io.of('/logs');
+  logs.use(auth);
+  registerLogsSocket(logs, { dockerService, appState });
+
+  const status = io.of('/status');
+  status.use(auth);
+  registerStatusSocket(status, { dockerService, appState });
+
+  return { logs, status };
+}
