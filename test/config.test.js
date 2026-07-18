@@ -26,4 +26,10 @@ describe('loadConfig', () => {
     expect(c.rconPort).toBe(25580);
     expect(c.port).toBe(8080);
   });
+
+  it('falls back to defaults for empty string or non-numeric numeric env vars', () => {
+    const c = loadConfig({ ...base, RCON_PORT: '', PORT: 'abc' });
+    expect(c.rconPort).toBe(25575);
+    expect(c.port).toBe(3000);
+  });
 });

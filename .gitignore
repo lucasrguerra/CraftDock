@@ -3,3 +3,5 @@ node_modules/
 panel-data/
 *.log
 coverage/
+docs/
+.superpowers/

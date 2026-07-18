@@ -5,7 +5,11 @@ export function loadConfig(env = process.env) {
   if (missing.length) {
     throw new Error(`Missing required env vars: ${missing.join(', ')}`);
   }
-  const num = (v, d) => (v == null ? d : Number(v));
+  const num = (v, d) => {
+    if (v == null || v === '') return d;
+    const n = Number(v);
+    return Number.isNaN(n) ? d : n;
+  };
   return {
     adminPasswordHash: env.ADMIN_PASSWORD_HASH,
     sessionSecret: env.SESSION_SECRET,
