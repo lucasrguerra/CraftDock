@@ -1,6 +1,6 @@
 services:
   craftdock-panel:
-    image: craftdock-panel:latest
+    build: .
     container_name: craftdock-panel
     ports:
       - "3000:3000"
@@ -24,6 +24,12 @@ services:
   minecraft-server:
     image: itzg/minecraft-server:latest   # or itzg/minecraft-bedrock-server
     container_name: craftdock-mc-server
+    # stdin_open + tty are REQUIRED by CraftDock: without a TTY, Docker returns a
+    # multiplexed log stream (8-byte frame headers) that garbles the Console tab,
+    # and stdin (Bedrock command channel via `docker attach`) does not reach the
+    # server process.
+    stdin_open: true
+    tty: true
     ports:
       - "25565:25565"
       - "19132:19132/udp"

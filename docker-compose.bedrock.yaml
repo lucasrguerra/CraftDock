@@ -1,0 +1,53 @@
+# CraftDock — Bedrock test stack.
+# Usage: docker compose -f docker-compose.bedrock.yaml up -d --build
+# Secrets (${...}) are read from the project .env by docker compose.
+services:
+  craftdock-panel:
+    build: .
+    container_name: craftdock-panel
+    ports:
+      - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./panel-data:/app/data
+      - mc-data:/minecraft/data
+    environment:
+      # development so the session cookie is NOT marked `secure` — required for
+      # testing over plain http://localhost. In real deploys behind HTTPS
+      # (e.g. Coolify on 443), use production so the cookie is secure.
+      - NODE_ENV=development
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - MC_CONTAINER_NAME=craftdock-mc-server
+      - MC_DATA_PATH=/minecraft/data
+      - MC_EDITION=bedrock
+      - MC_WORLD_NAME=worlds
+      # RCON is Java-only; unused by Bedrock but the config loader requires a value.
+      - RCON_PASSWORD=unused-on-bedrock
+      - MAP_URL=${MAP_URL}
+    networks: [craftdock-net]
+    restart: unless-stopped
+
+  minecraft-server:
+    image: itzg/minecraft-bedrock-server:latest
+    container_name: craftdock-mc-server
+    # REQUIRED by CraftDock: without a TTY, Docker returns a multiplexed log
+    # stream (garbles the Console tab) and stdin (the Bedrock command channel
+    # via `docker attach`) never reaches the server process.
+    stdin_open: true
+    tty: true
+    ports:
+      - "19132:19132/udp"
+    volumes:
+      - mc-data:/data
+    environment:
+      - EULA=TRUE
+      - OVERRIDE_SERVER_PROPERTIES=false
+    networks: [craftdock-net]
+    restart: unless-stopped
+
+volumes:
+  mc-data:
+networks:
+  craftdock-net:
+    driver: bridge
