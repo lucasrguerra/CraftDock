@@ -15,7 +15,7 @@ The panel never modifies the Minecraft core. It controls the game container over
 | **Jogadores** | Online list, whitelist / ban / op management, per-player kick & teleport — controls adapt to what the edition supports |
 | **Opções** | Friendly editor for `server.properties` (difficulty, PvP, max-players, gamemode, …) |
 | **Mundo** | Download the world as `.zip`, upload/replace a world, regenerate a new world |
-| **Mapa** | Shows the world seed and embeds a seed map (mcseedmap.net) for it; optional `MAP_URL` override for a self-hosted map (BlueMap / Pl3xMap) |
+| **Mapa** | Shows the world seed and embeds a seed map (mcseedmap.net) rendered for that seed |
 
 ---
 
@@ -38,7 +38,7 @@ The Map tab shows the world seed and embeds [mcseedmap.net](https://mcseedmap.ne
 2. **Bedrock** — read from `worlds/<level-name>/level.dat` (the `RandomSeed` NBT long). Bedrock has **no** `seed` console command, so this is the only reliable source.
 3. **Java** — the `seed` command over RCON.
 
-The mcseedmap version segment defaults per edition; override it with `MAP_VERSION` (e.g. `1.21-Java`, `26.30.0-Bedrock`) if the biomes don't match your server version. Set `MAP_URL` to embed a self-hosted map (BlueMap / Pl3xMap) instead — it takes precedence and must allow iframe embedding.
+The mcseedmap version segment defaults per edition; override it with `MAP_VERSION` (e.g. `1.21-Java`, `26.30.0-Bedrock`) if the biomes don't match your server version.
 
 ---
 
@@ -65,14 +65,14 @@ docker compose -f docker-compose.bedrock.yaml logs -f    # follow panel + server
 git clone <repo> && cd CraftDock
 npm install
 
-# 1. Generate an admin password hash (prints a bcrypt string):
+# 1. Generate the admin password hash (prints a raw and a base64 line):
 npm run hash -- <your-password>
 
 # 2. Create .env from the template and fill it in:
 cp .env.example .env
-#    - ADMIN_PASSWORD_HASH = the hash from step 1
+#    - ADMIN_PASSWORD_HASH = the raw hash line from step 1 (best for `npm run dev`)
 #    - SESSION_SECRET      = any long random string
-#    - RCON_PASSWORD       = your server's RCON password (any value for Bedrock)
+#    - RCON_PASSWORD       = your server's RCON password (leave empty for Bedrock)
 
 # 3. Run the tests and start the dev server:
 npm test
@@ -108,7 +108,15 @@ docker compose -f docker-compose.bedrock.yaml up -d --build
 docker compose -f docker-compose.bedrock.yaml logs -f
 ```
 
-Then open <http://localhost:3000>.
+Both stacks share the **same** panel env block (only the edition, world folder and
+Minecraft image differ) and read their values from `.env` — see [`.env.example`](.env.example)
+for the canonical list.
+
+> **The panel uses `expose`, not a host port.** These stacks target a reverse proxy
+> (Coolify/Traefik routes your domain to port 3000). For **local** `docker compose`
+> testing without a proxy, uncomment the `ports: ["3000:3000"]` line in the compose
+> and set `NODE_ENV=development` in `.env`, then open <http://localhost:3000>.
+> (For everyday local work, `npm run dev` is simpler and needs no compose.)
 
 > **Rebuild after changing panel code:** `--build` is required the first time and
 > whenever you change the panel source. A runtime-only change (env var) just needs
@@ -128,9 +136,9 @@ The panel controls an existing, **fixed** container — it never recreates it or
 3. **Java only:** `ENABLE_RCON=true` + a shared `RCON_PASSWORD`.
 4. Panel and Minecraft server on the **same Docker network**.
 5. The `mc-data` volume **shared** between the panel and the Minecraft server (the panel reads/writes world files directly).
-6. Set `ADMIN_PASSWORD_HASH` (from `npm run hash`), a strong `SESSION_SECRET`.
+6. Set `ADMIN_PASSWORD_HASH_B64` (the base64 line from `npm run hash`) and a strong `SESSION_SECRET`. Prefer the base64 form here — a raw bcrypt hash's `$` chars get mangled by docker compose / Coolify interpolation.
 7. Run the panel with **`NODE_ENV=production`** so the session cookie is marked `secure` — this requires serving the panel over **HTTPS** (Coolify/Traefik terminate TLS on 443). The app already calls `trust proxy`, so the secure cookie works correctly behind the reverse proxy.
-8. *(Optional)* Set `MAP_URL` for the Map tab; the map service must allow iframe embedding (no `X-Frame-Options: DENY`).
+8. *(Optional)* Set `MAP_VERSION` if the Map tab's mcseedmap version doesn't match your server.
 
 ---
 
@@ -138,21 +146,24 @@ The panel controls an existing, **fixed** container — it never recreates it or
 
 | Variable | Required | Default | Description |
 |----------|:--------:|---------|-------------|
-| `ADMIN_PASSWORD_HASH` | ✅ | — | bcrypt hash of the admin password (`npm run hash -- <pw>`) |
+| `ADMIN_PASSWORD_HASH` | ✅¹ | — | Raw bcrypt hash (`npm run hash -- <pw>`). Best for `npm run dev` |
+| `ADMIN_PASSWORD_HASH_B64` | ✅¹ | — | Base64 of the bcrypt hash. Best for docker compose / Coolify (no `$` escaping) |
 | `SESSION_SECRET` | ✅ | — | Long random string signing the session cookie |
-| `RCON_PASSWORD` | ✅ | — | RCON password (Java). Any placeholder value for Bedrock |
-| `MC_CONTAINER_NAME` | | `craftdock-mc-server` | Name of the Minecraft container to control |
+| `MC_CONTAINER_NAME` | | `craftdock-mc-server` | Minecraft container name (matched first) |
+| `MC_SERVICE_NAME` | | `minecraft-server` | Compose service name — fallback match when the container name is auto-generated (e.g. Coolify) |
 | `MC_DATA_PATH` | | `/minecraft/data` | Path (inside the panel) to the shared MC data volume |
 | `MC_EDITION` | | `auto` | `auto` \| `java` \| `bedrock` |
 | `MC_WORLD_NAME` | | `world` | World folder under `MC_DATA_PATH` (Bedrock: `worlds`) |
 | `RCON_HOST` | | `craftdock-mc-server` | RCON host (Java) |
 | `RCON_PORT` | | `25575` | RCON port (Java) |
-| `MAP_URL` | | *(empty)* | Self-hosted map URL to embed instead of mcseedmap (takes precedence; must allow embedding) |
+| `RCON_PASSWORD` | | *(empty)* | RCON password — **required for Java**, leave empty for Bedrock |
 | `MAP_VERSION` | | *(per edition)* | mcseedmap version segment override (e.g. `1.21-Java`, `26.30.0-Bedrock`) |
 | `PORT` | | `3000` | Port the panel listens on |
 | `NODE_ENV` | | `development` | `production` marks the session cookie `secure` (needs HTTPS) |
 | `LOG_LEVEL` | | `info` | `error` \| `warn` \| `info` \| `debug` |
 | `MAX_UPLOAD_MB` | | `1024` | Max world upload size (MB) |
+
+¹ Provide **one** of `ADMIN_PASSWORD_HASH` or `ADMIN_PASSWORD_HASH_B64`. `npm run hash -- <pw>` prints both; the raw hash wins if both are set.
 
 ---
 
@@ -194,8 +205,17 @@ The Minecraft container is missing `stdin_open: true` + `tty: true`. Add both an
 **Options tab changes don't persist after restart**
 The Minecraft service is missing `OVERRIDE_SERVER_PROPERTIES=false`.
 
+**Coolify: `Bind for 0.0.0.0:3000 failed: port is already allocated`**
+Don't publish the panel's port on the host under Coolify — its Traefik reaches the container over the network. Use `expose: ["3000"]` (not `ports:`) on `craftdock-panel` and set the service **domain** in Coolify pointing to port **3000**. Keep `ports:` only on the Minecraft service (the raw game port).
+
+**Coolify / docker compose: login fails, or warning `The "…" variable is not set. Defaulting to a blank string.`**
+The `…` is the tail of your bcrypt hash — bcrypt hashes contain `$`, which docker compose interprets as variable interpolation, corrupting the hash. **Use `ADMIN_PASSWORD_HASH_B64`** (the base64 line from `npm run hash`) instead of the raw `ADMIN_PASSWORD_HASH` — base64 has no `$`, so nothing gets mangled. (Alternatively, keep the raw hash but escape every `$` as `$$`.)
+
+**Status shows `not_found` on Coolify (panel can't see the server)**
+Coolify ignores `container_name` and auto-generates names like `minecraft-server-<project>-<hash>`, so matching by `MC_CONTAINER_NAME` fails. The panel falls back to the compose **service** name — make sure the Minecraft service is named `minecraft-server` (or set `MC_SERVICE_NAME` to match) and that both services are in the **same** Coolify resource (project). The panel also needs the Docker socket mounted (`/var/run/docker.sock`).
+
 **Map tab shows "waiting for seed" / no map**
-The seed is resolved only while the server is **running**. For Bedrock it comes from `worlds/<level-name>/level.dat`, so the `mc-data` volume must be shared with the panel. If you set `MAP_URL`, that service must allow iframe embedding (no `X-Frame-Options: DENY`).
+The seed is resolved only while the server is **running**. For Bedrock it comes from `worlds/<level-name>/level.dat`, so the `mc-data` volume must be shared with the panel.
 
 ---
 

@@ -71,7 +71,6 @@ export function createApp(deps) {
       logger?.warn('client-config: seed resolution failed', { error: err.message });
     }
     res.json({
-      mapUrl: config.mapUrl || '',
       mapVersion: config.mapVersion || '',
       seed,
       edition,

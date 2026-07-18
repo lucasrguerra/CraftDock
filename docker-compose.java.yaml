@@ -1,47 +1,56 @@
+# CraftDock — Java stack.
+# Usage: docker compose -f docker-compose.java.yaml up -d --build
+# Secrets/overrides (${...}) are read from the project .env by docker compose.
+# See the "Environment variables" table in README.md for every variable.
 services:
   craftdock-panel:
     build: .
     container_name: craftdock-panel
-    ports:
-      - "3000:3000"
+    # Behind a reverse proxy (Coolify/Traefik): keep `expose` and point the domain
+    # at port 3000. For local `docker compose` testing WITHOUT a proxy, uncomment
+    # `ports` below and set NODE_ENV=development in your .env.
+    expose:
+      - "3000"
+    # ports:
+    #   - "3000:3000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./panel-data:/app/data
       - mc-data:/minecraft/data
     environment:
-      - NODE_ENV=production
-      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
+      - NODE_ENV=${NODE_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # base64 of the bcrypt hash — avoids docker/Coolify eating the `$` chars.
+      - ADMIN_PASSWORD_HASH_B64=${ADMIN_PASSWORD_HASH_B64}
       - SESSION_SECRET=${SESSION_SECRET}
       - MC_CONTAINER_NAME=craftdock-mc-server
       - MC_DATA_PATH=/minecraft/data
-      - MC_EDITION=auto
+      - MC_EDITION=java
+      - MC_WORLD_NAME=world
       - RCON_HOST=craftdock-mc-server
-      - RCON_PASSWORD=${RCON_PASSWORD}
-      - MAP_URL=${MAP_URL}
+      - RCON_PORT=25575
+      - RCON_PASSWORD=${RCON_PASSWORD:-}
+      - MAP_VERSION=${MAP_VERSION:-}
     networks: [craftdock-net]
     restart: unless-stopped
 
   minecraft-server:
-    image: itzg/minecraft-server:latest   # or itzg/minecraft-bedrock-server
+    image: itzg/minecraft-server:latest
     container_name: craftdock-mc-server
     # stdin_open + tty are REQUIRED by CraftDock: without a TTY, Docker returns a
-    # multiplexed log stream (8-byte frame headers) that garbles the Console tab,
-    # and stdin (Bedrock command channel via `docker attach`) does not reach the
-    # server process.
+    # multiplexed log stream (8-byte frame headers) that garbles the Console tab.
     stdin_open: true
     tty: true
     ports:
-      - "25565:25565"
-      - "19132:19132/udp"
+      - "25565:25565"          # Java game port (raw TCP — open it in the host firewall)
     volumes:
       - mc-data:/data
     environment:
       - EULA=TRUE
-      - ENABLE_RCON=true
-      - RCON_PASSWORD=${RCON_PASSWORD}
-      - OVERRIDE_SERVER_PROPERTIES=false
       - TYPE=PAPER
       - VERSION=LATEST
+      - ENABLE_RCON=true
+      - RCON_PASSWORD=${RCON_PASSWORD:-}   # required for the panel's Java command channel
+      - OVERRIDE_SERVER_PROPERTIES=false   # so the Options tab persists
     networks: [craftdock-net]
     restart: unless-stopped
 

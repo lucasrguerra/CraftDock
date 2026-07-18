@@ -1,3 +1,5 @@
+import os from 'node:os';
+
 export class ContainerNotFoundError extends Error {
   constructor(name) {
     super(`Container not found: ${name}`);
@@ -10,12 +12,43 @@ function parseType(env = []) {
   return entry ? entry.slice('TYPE='.length) : null;
 }
 
+const SERVICE_LABEL = 'com.docker.compose.service';
+const PROJECT_LABEL = 'com.docker.compose.project';
+
 export function createDockerService(config, docker) {
   const name = config.mcContainerName;
+  const serviceName = config.mcServiceName;
+  let ownProjectCache;
+
+  // The panel's own compose project, read by self-inspecting the panel container
+  // (its hostname is its container id). Used to scope the service-label fallback
+  // so we never pick up a same-named service from another project.
+  async function ownProject() {
+    if (ownProjectCache !== undefined) return ownProjectCache;
+    try {
+      const self = await docker.getContainer(os.hostname()).inspect();
+      ownProjectCache = self.Config?.Labels?.[PROJECT_LABEL] || null;
+    } catch {
+      ownProjectCache = null;
+    }
+    return ownProjectCache;
+  }
 
   async function resolve() {
     const list = await docker.listContainers({ all: true });
-    const match = list.find((c) => c.Names?.some((n) => n === `/${name}` || n === name));
+
+    // 1. Exact container name (works locally where container_name is honored).
+    let match = list.find((c) => c.Names?.some((n) => n === `/${name}` || n === name));
+
+    // 2. Fallback: compose service label (handles Coolify's auto-generated names),
+    //    scoped to the panel's own project when it can be determined.
+    if (!match && serviceName) {
+      const project = await ownProject();
+      match = list.find((c) =>
+        c.Labels?.[SERVICE_LABEL] === serviceName &&
+        (!project || c.Labels?.[PROJECT_LABEL] === project));
+    }
+
     if (!match) throw new ContainerNotFoundError(name);
     return docker.getContainer(match.Id);
   }
