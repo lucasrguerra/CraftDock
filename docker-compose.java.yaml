@@ -1,0 +1,61 @@
+# CraftDock — Java stack.
+# Usage: docker compose -f docker-compose.java.yaml up -d --build
+# Secrets/overrides (${...}) are read from the project .env by docker compose.
+# See the "Environment variables" table in README.md for every variable.
+services:
+  craftdock-panel:
+    build: .
+    container_name: craftdock-panel
+    # Behind a reverse proxy (Coolify/Traefik): keep `expose` and point the domain
+    # at port 3000. For local `docker compose` testing WITHOUT a proxy, uncomment
+    # `ports` below and set NODE_ENV=development in your .env.
+    expose:
+      - "3000"
+    # ports:
+    #   - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - mc-data:/minecraft/data
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # base64 of the bcrypt hash — avoids docker/Coolify eating the `$` chars.
+      - ADMIN_PASSWORD_HASH_B64=${ADMIN_PASSWORD_HASH_B64}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - MC_CONTAINER_NAME=craftdock-mc-server
+      - MC_DATA_PATH=/minecraft/data
+      - MC_EDITION=java
+      - MC_WORLD_NAME=world
+      - RCON_HOST=craftdock-mc-server
+      - RCON_PORT=25575
+      - RCON_PASSWORD=${RCON_PASSWORD:-}
+      - MAP_VERSION=${MAP_VERSION:-}
+    networks: [craftdock-net]
+    restart: unless-stopped
+
+  minecraft-server:
+    image: itzg/minecraft-server:latest
+    container_name: craftdock-mc-server
+    # stdin_open + tty are REQUIRED by CraftDock: without a TTY, Docker returns a
+    # multiplexed log stream (8-byte frame headers) that garbles the Console tab.
+    stdin_open: true
+    tty: true
+    ports:
+      - "25565:25565"          # Java game port (raw TCP — open it in the host firewall)
+    volumes:
+      - mc-data:/data
+    environment:
+      - EULA=TRUE
+      - TYPE=PAPER
+      - VERSION=LATEST
+      - ENABLE_RCON=true
+      - RCON_PASSWORD=${RCON_PASSWORD:-}   # required for the panel's Java command channel
+      - OVERRIDE_SERVER_PROPERTIES=false   # so the Options tab persists
+    networks: [craftdock-net]
+    restart: unless-stopped
+
+volumes:
+  mc-data:
+networks:
+  craftdock-net:
+    driver: bridge

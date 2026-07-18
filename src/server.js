@@ -16,8 +16,24 @@ import { registerSockets } from './sockets/index.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function createApp(deps) {
-  const { config, dockerService, appState, propertiesService, worldService, authService, upload } = deps;
+  const { config, dockerService, appState, propertiesService, worldService, authService, upload, seedService, logger } = deps;
   const app = express();
+
+  // Request logging (debug level).
+  if (logger) {
+    app.use((req, res, next) => {
+      res.on('finish', () => {
+        logger.debug('http', { method: req.method, url: req.originalUrl, status: res.statusCode });
+      });
+      next();
+    });
+  }
+
+  // Behind a TLS-terminating reverse proxy (e.g. Coolify/Traefik on 443), the
+  // app receives plain http with X-Forwarded-Proto: https. Trusting the proxy
+  // lets express-session recognize the request as secure and actually set the
+  // `secure` session cookie — without this, login silently fails in production.
+  app.set('trust proxy', 1);
 
   const sessionMiddleware = session({
     secret: config.sessionSecret,
@@ -43,9 +59,22 @@ export function createApp(deps) {
   app.use('/api/properties', createPropertiesRouter({ propertiesService }));
   app.use('/api/world', createWorldRouter({ worldService, upload }));
 
-  // config exposure for the SPA (mapUrl only — no secrets)
-  app.get('/api/client-config', requireAuth, (req, res) => {
-    res.json({ mapUrl: config.mapUrl || '' });
+  // config exposure for the SPA (no secrets): map settings + resolved world seed
+  app.get('/api/client-config', requireAuth, async (req, res) => {
+    let seed = null;
+    let edition = null;
+    try {
+      const adapter = await appState.getAdapter();
+      edition = adapter._edition || null;
+      seed = await seedService.resolve(adapter, edition);
+    } catch (err) {
+      logger?.warn('client-config: seed resolution failed', { error: err.message });
+    }
+    res.json({
+      mapVersion: config.mapVersion || '',
+      seed,
+      edition,
+    });
   });
 
   // static SPA
@@ -54,6 +83,7 @@ export function createApp(deps) {
   // error handler
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
+    logger?.error('unhandled request error', { url: req.originalUrl, error: err.message, stack: err.stack });
     res.status(500).json({ error: err.message });
   });
 
@@ -67,10 +97,12 @@ export function startServer(deps) {
   registerSockets(io, {
     dockerService: deps.dockerService,
     appState: deps.appState,
+    seedService: deps.seedService,
     sessionMiddleware,
+    logger: deps.logger,
   });
   server.listen(deps.config.port, () => {
-    console.log(`CraftDock listening on :${deps.config.port}`);
+    (deps.logger?.info ? deps.logger.info(`listening on :${deps.config.port}`) : console.log(`CraftDock listening on :${deps.config.port}`));
   });
   return server;
 }

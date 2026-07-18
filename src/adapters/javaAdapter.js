@@ -16,5 +16,37 @@ export function createJavaAdapter(rconService) {
     give: (n, item, count = 1) => send(`give ${n} ${item} ${count}`),
     gamemode: (n, mode) => send(`gamemode ${mode} ${n}`),
     teleport: (n, target) => send(`tp ${n} ${target}`),
+    async getSeed() {
+      const res = await send('seed');
+      const clean = res.replace(/§[0-9a-fk-or]/ig, '');
+      const m = clean.match(/Seed:\s*\[?(-?\d+)\]?/i);
+      return m ? m[1] : null;
+    },
+    async getPlayerPosition(n) {
+      try {
+        const res = await send(`tp ${n} ~ ~ ~`);
+        const clean = res.replace(/§[0-9a-fk-or]/ig, '');
+        const m = clean.match(/to\s+(-?\d+(?:\.\d+)?)(?:,\s*|\s+)(-?\d+(?:\.\d+)?)(?:,\s*|\s+)(-?\d+(?:\.\d+)?)/i);
+        if (!m) return null;
+        
+        let dimension = 'overworld';
+        try {
+          const resDim = await send(`data get entity ${n} Dimension`);
+          const cleanDim = resDim.replace(/§[0-9a-fk-or]/ig, '');
+          if (cleanDim.includes('the_nether')) dimension = 'nether';
+          else if (cleanDim.includes('the_end')) dimension = 'end';
+        } catch { /* ignore dimension if command fails */ }
+
+        return {
+          x: parseFloat(m[1]),
+          y: parseFloat(m[2]),
+          z: parseFloat(m[3]),
+          dimension
+        };
+      } catch {
+        return null;
+      }
+    }
   };
 }
+

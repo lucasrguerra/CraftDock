@@ -2,7 +2,7 @@ import { api } from '../socket.js';
 
 export function renderStatus(root) {
   root.innerHTML = `
-    <div class="space-y-6 max-w-4xl">
+    <div class="space-y-6 max-w-4xl mx-auto w-full">
       <!-- Status Summary Panel -->
       <div class="p-6 rounded-2xl bg-slate-900/40 border border-slate-800/80 backdrop-blur-md flex flex-wrap items-center justify-between gap-4">
         <div class="flex items-center gap-4">
@@ -29,7 +29,7 @@ export function renderStatus(root) {
             Desligar
           </button>
           <button data-act="restart" class="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600/10 hover:bg-blue-600 border border-blue-500/20 hover:border-blue-500 text-blue-400 hover:text-slate-950 font-medium transition-all duration-300 active:scale-[0.98]">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.228 11H21m-1.772-9l-1.772 1.772a8.002 8.002 0 01-11.83 0L3.628 3.772"></path></svg>
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
             Reiniciar
           </button>
           <button data-act="kill" class="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-600/10 hover:bg-rose-700 border border-rose-500/20 hover:border-rose-600 text-rose-400 hover:text-white font-medium transition-all duration-300 active:scale-[0.98]">

@@ -1,0 +1,58 @@
+# CraftDock — Bedrock stack.
+# Usage: docker compose -f docker-compose.bedrock.yaml up -d --build
+# Secrets/overrides (${...}) are read from the project .env by docker compose.
+# See the "Environment variables" table in README.md for every variable.
+services:
+  craftdock-panel:
+    build: .
+    container_name: craftdock-panel
+    # Behind a reverse proxy (Coolify/Traefik): keep `expose` and point the domain
+    # at port 3000. For local `docker compose` testing WITHOUT a proxy, uncomment
+    # `ports` below and set NODE_ENV=development in your .env.
+    expose:
+      - "3000"
+    # ports:
+    #   - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - mc-data:/minecraft/data
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # base64 of the bcrypt hash — avoids docker/Coolify eating the `$` chars.
+      - ADMIN_PASSWORD_HASH_B64=${ADMIN_PASSWORD_HASH_B64}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - MC_CONTAINER_NAME=craftdock-mc-server
+      - MC_DATA_PATH=/minecraft/data
+      - MC_EDITION=bedrock
+      - MC_WORLD_NAME=worlds
+      - RCON_HOST=craftdock-mc-server
+      - RCON_PORT=25575
+      - RCON_PASSWORD=${RCON_PASSWORD:-}   # Bedrock ignores RCON; leave empty
+      - MAP_VERSION=${MAP_VERSION:-}
+    networks: [craftdock-net]
+    restart: unless-stopped
+
+  minecraft-server:
+    image: itzg/minecraft-bedrock-server:latest
+    container_name: craftdock-mc-server
+    # stdin_open + tty are REQUIRED by CraftDock: without a TTY, stdin (the Bedrock
+    # command channel via `docker attach`) never reaches the server, and the log
+    # stream is multiplexed (garbles the Console tab).
+    stdin_open: true
+    tty: true
+    ports:
+      - "19132:19132/udp"      # Bedrock game port (raw UDP — open it in the host firewall)
+    volumes:
+      - mc-data:/data
+    environment:
+      - EULA=TRUE
+      - OVERRIDE_SERVER_PROPERTIES=false   # so the Options tab persists
+    networks: [craftdock-net]
+    restart: unless-stopped
+
+volumes:
+  mc-data:
+networks:
+  craftdock-net:
+    driver: bridge

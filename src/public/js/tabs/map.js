@@ -1,44 +1,91 @@
 import { api } from '../socket.js';
 
+// mcseedmap.net is embeddable (no X-Frame-Options) and renders the REAL biome/
+// structure map from the seed. URL: https://mcseedmap.net/<lang>/<version>/<seed>
+const DEFAULT_VERSION = { bedrock: '26.30.0-Bedrock', java: '1.21-Java' };
+
+function mapUrlFor(seed, edition, mapVersion) {
+  const version = mapVersion || DEFAULT_VERSION[edition] || DEFAULT_VERSION.java;
+  return `https://mcseedmap.net/pt/${version}/${encodeURIComponent(seed)}`;
+}
+
 export function renderMap(root) {
   root.innerHTML = `
-    <div id="mapWrap" class="w-full max-w-6xl mx-auto flex items-center justify-center py-20 text-slate-500">
-      <div class="flex flex-col items-center gap-3">
-        <svg class="animate-spin h-8 w-8 text-emerald-500" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-        <span class="text-sm font-medium">Buscando configurações do mapa...</span>
+    <div class="flex flex-col h-[82vh] w-full max-w-7xl mx-auto gap-3">
+      <!-- Seed bar -->
+      <div class="flex flex-wrap items-center gap-3 bg-slate-900/50 border border-slate-800/80 rounded-2xl px-4 py-3 backdrop-blur-md">
+        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Seed do mundo</span>
+        <code id="seedVal" class="font-mono text-sm text-emerald-400 bg-slate-950/70 border border-slate-800 rounded-lg px-3 py-1">carregando…</code>
+        <button id="copySeed" class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700/60 text-slate-200 transition-all disabled:opacity-40" disabled>Copiar</button>
+        <a id="openMap" href="#" target="_blank" rel="noopener" class="text-xs px-3 py-1.5 rounded-lg bg-emerald-600/10 hover:bg-emerald-600 border border-emerald-500/20 hover:border-emerald-500 text-emerald-400 hover:text-slate-950 transition-all pointer-events-none opacity-40">Abrir no mcseedmap ↗</a>
+        <span id="edition" class="ml-auto text-xs text-slate-500"></span>
+      </div>
+
+      <!-- Embedded map -->
+      <div class="flex-grow relative bg-slate-950/60 border border-slate-800/80 rounded-2xl overflow-hidden">
+        <div id="mapPlaceholder" class="absolute inset-0 flex items-center justify-center text-center p-6">
+          <div class="text-slate-500 text-sm">
+            <p class="mb-1">Aguardando a seed do servidor…</p>
+            <p class="text-xs text-slate-600">O mapa aparece quando o servidor estiver ligado e a seed for lida.</p>
+          </div>
+        </div>
+        <iframe id="mapFrame" class="w-full h-full hidden" style="border:0" referrerpolicy="no-referrer"></iframe>
       </div>
     </div>`;
 
+  const seedEl = root.querySelector('#seedVal');
+  const copyBtn = root.querySelector('#copySeed');
+  const openLink = root.querySelector('#openMap');
+  const editionEl = root.querySelector('#edition');
+  const frame = root.querySelector('#mapFrame');
+  const placeholder = root.querySelector('#mapPlaceholder');
+
+  let currentSeed = null;
+  let edition = 'java';
+  let mapVersion = '';
+
+  function applySeed(seed) {
+    if (seed == null || seed === '' || String(seed) === currentSeed) return;
+    currentSeed = String(seed);
+    seedEl.textContent = currentSeed;
+    copyBtn.disabled = false;
+
+    const url = mapUrlFor(currentSeed, edition, mapVersion);
+    openLink.href = url;
+    openLink.classList.remove('pointer-events-none', 'opacity-40');
+
+    // Only (re)load the iframe when the seed actually changes, so panning/zoom
+    // inside mcseedmap isn't reset on every status tick.
+    frame.src = url;
+    frame.classList.remove('hidden');
+    placeholder.classList.add('hidden');
+  }
+
+  copyBtn.onclick = async () => {
+    if (!currentSeed) return;
+    try {
+      await navigator.clipboard.writeText(currentSeed);
+      copyBtn.textContent = 'Copiado!';
+      setTimeout(() => { copyBtn.textContent = 'Copiar'; }, 1500);
+    } catch { /* clipboard blocked */ }
+  };
+
+  // Initial config (seed + edition + optional version override).
   api('/api/client-config').then((cfg) => {
-    const wrap = root.querySelector('#mapWrap');
-    if (cfg?.mapUrl) {
-      wrap.className = 'w-full max-w-7xl mx-auto h-[80vh] bg-slate-950/40 border border-slate-800/80 rounded-2xl overflow-hidden shadow-2xl backdrop-blur-md';
-      wrap.innerHTML = `<iframe src="${cfg.mapUrl}" class="w-full h-full" style="border:0" allow="fullscreen"></iframe>`;
-    } else {
-      wrap.className = 'w-full max-w-2xl mx-auto py-8';
-      wrap.innerHTML = `
-        <div class="bg-slate-900/40 border border-slate-800/80 p-8 rounded-2xl backdrop-blur-md">
-          <div class="flex items-center gap-3 mb-4 pb-3 border-b border-slate-800/60">
-            <div class="h-9 w-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 01.553-.894L9 2l6 3 5.447-2.724A1 1 0 0121 3.118v10.764a1 1 0 01-.553.894L15 20l-6-3z"></path></svg>
-            </div>
-            <h3 class="font-bold text-slate-200">Mapa não configurado</h3>
-          </div>
-          <p class="text-slate-300 text-sm leading-relaxed mb-4">
-            Instale um plugin de mapeamento tridimensional no servidor (como o <strong>BlueMap</strong> ou <strong>Pl3xMap</strong>)
-            e defina a variável de ambiente <code>MAP_URL</code> apontando para a porta web correspondente.
-          </p>
-          <div class="bg-slate-950/60 border border-slate-850 p-4 rounded-xl font-mono text-xs text-slate-400 space-y-1 mb-2">
-            <div># Exemplo no docker-compose.yaml</div>
-            <div class="text-emerald-500">- MAP_URL=http://seuservidor.com:8100</div>
-          </div>
-          <p class="text-slate-500 text-xs">
-            Certifique-se de que o serviço de mapas permite embedding de terceiros e não bloqueia iframes via cabeçalho <code>X-Frame-Options: DENY</code>.
-          </p>
-        </div>`;
-    }
+    if (!cfg) return;
+    if (cfg.edition) edition = cfg.edition;
+    if (cfg.mapVersion) mapVersion = cfg.mapVersion;
+    editionEl.textContent = cfg.edition ? `Edição: ${cfg.edition}` : '';
+    if (cfg.seed) applySeed(cfg.seed);
   });
+
+  // Keep listening — the seed becomes available once the server is running.
+  const socket = io('/status');
+  socket.on('status', (s) => {
+    if (s.type) edition = s.type.toUpperCase() === 'BEDROCK' ? 'bedrock' : 'java';
+    editionEl.textContent = s.edition ? `Edição: ${s.edition}` : editionEl.textContent;
+    if (s.seed) applySeed(s.seed);
+  });
+
+  return () => socket.disconnect();
 }

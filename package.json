@@ -5,7 +5,7 @@
   "engines": { "node": ">=18" },
   "scripts": {
     "start": "node src/main.js",
-    "dev": "node --watch src/main.js",
+    "dev": "node --watch --env-file=.env src/main.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "hash": "node scripts/hash-password.js"
