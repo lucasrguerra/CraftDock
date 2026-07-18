@@ -10,6 +10,9 @@ function deps() {
       stop: vi.fn().mockResolvedValue(),
       start: vi.fn().mockResolvedValue(),
     },
+    propertiesService: {
+      update: vi.fn().mockResolvedValue({}),
+    },
     fs: { rm: vi.fn().mockResolvedValue() },
   };
 }
@@ -32,5 +35,12 @@ describe('worldService.regen', () => {
     await svc.regen();
     expect(d.dockerService.stop).not.toHaveBeenCalled();
     expect(d.dockerService.start).toHaveBeenCalled();
+  });
+
+  it('updates level-seed in propertiesService if seed is provided', async () => {
+    const d = deps();
+    const svc = createWorldService(d);
+    await svc.regen('12345');
+    expect(d.propertiesService.update).toHaveBeenCalledWith({ 'level-seed': '12345' });
   });
 });

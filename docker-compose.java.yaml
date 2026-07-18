@@ -30,6 +30,12 @@ services:
       - RCON_PORT=25575
       - RCON_PASSWORD=${RCON_PASSWORD:-}
       - MAP_VERSION=${MAP_VERSION:-}
+    healthcheck:
+      test: ["CMD", "node", "--eval", "fetch('http://127.0.0.1:3000/api/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks: [craftdock-net]
     restart: unless-stopped
 
@@ -51,6 +57,12 @@ services:
       - ENABLE_RCON=true
       - RCON_PASSWORD=${RCON_PASSWORD:-}   # required for the panel's Java command channel
       - OVERRIDE_SERVER_PROPERTIES=false   # so the Options tab persists
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/local/bin/mc-health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     networks: [craftdock-net]
     restart: unless-stopped
 

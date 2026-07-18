@@ -1,4 +1,4 @@
-import { parsePlayerList, CAPABILITIES } from './serverAdapter.js';
+import { parsePlayerList, parseWhitelistList, CAPABILITIES } from './serverAdapter.js';
 
 export function createJavaAdapter(rconService) {
   const send = (cmd) => rconService.send(cmd);
@@ -8,6 +8,9 @@ export function createJavaAdapter(rconService) {
     async listPlayers() { return parsePlayerList(await send('list')); },
     whitelistAdd: (n) => send(`whitelist add ${n}`),
     whitelistRemove: (n) => send(`whitelist remove ${n}`),
+    whitelistOn: () => send('whitelist on'),
+    whitelistOff: () => send('whitelist off'),
+    async whitelistList() { return parseWhitelistList(await send('whitelist list')); },
     ban: (n, reason = '') => send(`ban ${n} ${reason}`.trim()),
     pardon: (n) => send(`pardon ${n}`),
     op: (n) => send(`op ${n}`),

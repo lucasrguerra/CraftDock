@@ -1,7 +1,7 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
-export function createWorldService({ config, dockerService, fs = fsp, archiver, extractZip }) {
+export function createWorldService({ config, dockerService, propertiesService, fs = fsp, archiver, extractZip }) {
   const worldPath = path.join(config.mcDataPath, config.mcWorldName);
 
   async function stopIfRunning() {
@@ -12,8 +12,11 @@ export function createWorldService({ config, dockerService, fs = fsp, archiver, 
     return false;
   }
 
-  async function regen() {
+  async function regen(seed) {
     await stopIfRunning();
+    if (seed !== undefined && propertiesService) {
+      await propertiesService.update({ 'level-seed': seed });
+    }
     await fs.rm(worldPath, { recursive: true, force: true });
     await dockerService.start();
     return { ok: true };

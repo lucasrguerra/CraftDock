@@ -5,12 +5,36 @@ export class NotSupportedError extends Error {
   }
 }
 
-const COMMON = ['listPlayers', 'whitelistAdd', 'whitelistRemove', 'op', 'deop', 'kick', 'give', 'gamemode', 'teleport', 'sendCommand'];
+const COMMON = ['listPlayers', 'whitelistAdd', 'whitelistRemove', 'whitelistOn', 'whitelistOff', 'whitelistList', 'op', 'deop', 'kick', 'give', 'gamemode', 'teleport', 'sendCommand'];
 
 export const CAPABILITIES = {
   JAVA: new Set([...COMMON, 'ban', 'pardon']),
   BEDROCK: new Set([...COMMON]),
 };
+
+/**
+ * Parses the output of `whitelist list` / `allowlist list`.
+ * Typical formats:
+ *   Java:    "There are 2 whitelisted players: steve, alex"
+ *   Bedrock: "There are 2 allowlisted players: steve, alex"
+ */
+export function parseWhitelistList(text) {
+  // If the text contains JSON (Bedrock allowlist query format)
+  const jsonMatch = text.match(/\{.*\}/);
+  if (jsonMatch) {
+    try {
+      const data = JSON.parse(jsonMatch[0]);
+      if (data && Array.isArray(data.result)) {
+        return data.result.map((p) => p.name).filter(Boolean);
+      }
+    } catch { /* fallback to text parsing */ }
+  }
+
+  const clean = text.replace(/\s+/g, ' ').trim();
+  const m = clean.match(/:\s*(.*)$/);
+  if (!m || !m[1].trim()) return [];
+  return m[1].split(',').map((s) => s.trim()).filter(Boolean);
+}
 
 export function parsePlayerList(text) {
   const clean = text.replace(/\s+/g, ' ').trim();

@@ -4,7 +4,8 @@ export function createWorldRouter({ worldService, upload }) {
   const router = Router();
 
   router.post('/regen', async (req, res, next) => {
-    try { res.json(await worldService.regen()); } catch (err) { next(err); }
+    const { seed } = req.body || {};
+    try { res.json(await worldService.regen(seed)); } catch (err) { next(err); }
   });
 
   router.get('/download', (req, res) => {

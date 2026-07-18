@@ -53,4 +53,35 @@ describe('BedrockAdapter', () => {
     const pos = await adapter.getPlayerPosition('alex');
     expect(pos).toEqual({ x: 12.5, y: 64, z: -25.5, dimension: 'overworld' });
   });
+
+  it('whitelistOn maps to "allowlist on"', async () => {
+    const { stdin, adapter } = make();
+    await adapter.whitelistOn();
+    expect(stdin.send).toHaveBeenCalledWith('allowlist on');
+  });
+
+  it('whitelistOff maps to "allowlist off"', async () => {
+    const { stdin, adapter } = make();
+    await adapter.whitelistOff();
+    expect(stdin.send).toHaveBeenCalledWith('allowlist off');
+  });
+
+  it('whitelistList parses "allowlist list" output into array', async () => {
+    const { adapter } = make(async () => 'There are 2 allowlisted players: steve, alex');
+    const list = await adapter.whitelistList();
+    expect(list).toEqual(['steve', 'alex']);
+  });
+
+  it('whitelistList returns empty array when no players', async () => {
+    const { adapter } = make(async () => 'There are 0 allowlisted players:');
+    const list = await adapter.whitelistList();
+    expect(list).toEqual([]);
+  });
+
+  it('exposes whitelistOn/Off/List capabilities', () => {
+    const { adapter } = make();
+    expect(adapter.capabilities.has('whitelistOn')).toBe(true);
+    expect(adapter.capabilities.has('whitelistOff')).toBe(true);
+    expect(adapter.capabilities.has('whitelistList')).toBe(true);
+  });
 });

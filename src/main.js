@@ -36,7 +36,7 @@ const extractZip = (zip, dest) =>
       .on('error', reject);
   });
 
-const worldService = createWorldService({ config, dockerService, archiver, extractZip });
+const worldService = createWorldService({ config, dockerService, propertiesService, archiver, extractZip });
 const upload = multer({
   dest: os.tmpdir(),
   limits: { fileSize: config.maxUploadBytes },

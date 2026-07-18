@@ -1,4 +1,4 @@
-import { parsePlayerList, CAPABILITIES, NotSupportedError } from './serverAdapter.js';
+import { parsePlayerList, parseWhitelistList, CAPABILITIES, NotSupportedError } from './serverAdapter.js';
 
 export function createBedrockAdapter(stdinService) {
   const send = (cmd) => stdinService.send(cmd);
@@ -8,6 +8,9 @@ export function createBedrockAdapter(stdinService) {
     async listPlayers() { return parsePlayerList(await send('list')); },
     whitelistAdd: (n) => send(`allowlist add ${n}`),
     whitelistRemove: (n) => send(`allowlist remove ${n}`),
+    whitelistOn: () => send('allowlist on'),
+    whitelistOff: () => send('allowlist off'),
+    async whitelistList() { return parseWhitelistList(await send('allowlist list')); },
     async ban() { throw new NotSupportedError('ban'); },
     async pardon() { throw new NotSupportedError('pardon'); },
     op: (n) => send(`op ${n}`),

@@ -50,12 +50,13 @@ export function createApp(deps) {
   app.use(sessionMiddleware);
 
   // public
+  app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
   app.use('/api/auth', createAuthRouter(authService));
 
   // guarded
   app.use('/api', requireAuth);
   app.use('/api/status', createStatusRouter({ dockerService, appState }));
-  app.use('/api/players', createPlayersRouter({ appState }));
+  app.use('/api/players', createPlayersRouter({ appState, propertiesService }));
   app.use('/api/properties', createPropertiesRouter({ propertiesService }));
   app.use('/api/world', createWorldRouter({ worldService, upload }));
 
