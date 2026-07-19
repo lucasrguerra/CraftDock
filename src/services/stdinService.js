@@ -7,8 +7,17 @@ export function createStdinService(dockerService, { windowMs = 300, logger } = {
 
   async function ensure() {
     if (stream && !stream.destroyed) return stream;
-    stream = await dockerService.attach();
-    return stream;
+    const s = await dockerService.attach();
+    stream = s;
+    // When the container stops/restarts (e.g. during a world import) the attach
+    // stream ends but is not always flagged `.destroyed`. Invalidate the cache on
+    // end/close/error so the next command re-attaches to the fresh process
+    // instead of writing into a dead stream (which left `list` returning nothing).
+    const invalidate = () => { if (stream === s) stream = null; };
+    s.once('end', invalidate);
+    s.once('close', invalidate);
+    s.once('error', invalidate);
+    return s;
   }
 
   function exec(cmd) {

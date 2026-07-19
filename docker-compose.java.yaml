@@ -31,34 +31,7 @@ services:
       - RCON_PASSWORD=${RCON_PASSWORD:-}
       - MAP_VERSION=${MAP_VERSION:-}
     healthcheck:
-      test:
-        - "CMD"
-        - "node"
-        - "-e"
-        - |
-          const fs = require('fs');
-          const failFile = '/tmp/health_failures';
-          fetch('http://127.0.0.1:3000/api/health')
-            .then(r => {
-              if (r.ok) {
-                try { fs.unlinkSync(failFile); } catch {}
-                process.exit(0);
-              } else {
-                throw new Error();
-              }
-            })
-            .catch(() => {
-              let fails = 0;
-              try { fails = parseInt(fs.readFileSync(failFile, 'utf8')) || 0; } catch {}
-              fails++;
-              if (fails >= 3) {
-                try { fs.unlinkSync(failFile); } catch {}
-                process.kill(1, 'SIGKILL');
-                process.exit(1);
-              }
-              fs.writeFileSync(failFile, String(fails));
-              process.exit(1);
-            });
+      test: ["CMD", "node", "src/healthcheck.js"]
       interval: 30s
       timeout: 5s
       retries: 3

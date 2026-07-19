@@ -59,6 +59,29 @@ describe('stdinService', () => {
     expect(r3).toContain('reply3');
   });
 
+  it('re-attaches after the stream ends (e.g. container stop/start on world import)', async () => {
+    const stream1 = new PassThrough();
+    const stream2 = new PassThrough();
+    let n = 0;
+    const dockerService = {
+      attach: vi.fn().mockImplementation(async () => (++n === 1 ? stream1 : stream2)),
+    };
+    const svc = createStdinService(dockerService, { windowMs: 5 });
+
+    await svc.send('a');
+    expect(dockerService.attach).toHaveBeenCalledTimes(1);
+
+    // Container stopped: the attach stream ends. A stale, non-destroyed stream
+    // must NOT be reused — the next command has to re-attach.
+    stream1.emit('end');
+    await new Promise((r) => setTimeout(r, 1));
+
+    setTimeout(() => stream2.push('ok\n'), 2);
+    const out = await svc.send('b');
+    expect(dockerService.attach).toHaveBeenCalledTimes(2);
+    expect(out).toContain('ok');
+  });
+
   it('queue continues even if a command rejects (stream error)', async () => {
     let callCount = 0;
     const dockerService = {
