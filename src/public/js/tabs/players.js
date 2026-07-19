@@ -24,7 +24,7 @@ export function renderPlayers(root) {
           <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-800/60">
             <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2">
               <svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-              Jogadores Online
+              Jogadores do Mundo
             </h2>
             <span id="player-count" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700/50 text-slate-400">0 online</span>
           </div>
@@ -33,7 +33,7 @@ export function renderPlayers(root) {
             <li class="text-slate-400 text-sm italic py-4 text-center">Carregando...</li>
           </ul>
         </div>
-
+        
         <!-- Management Panel -->
         <div class="bg-slate-900/40 border border-slate-800/80 p-6 rounded-2xl backdrop-blur-md">
           <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2 mb-4 pb-3 border-b border-slate-800/60">
@@ -112,34 +112,74 @@ export function renderPlayers(root) {
       action(act, {});
     };
 
-    // --- Online players ---
+    // --- Combine online players and history ---
+    const onlineList = data.players.players || [];
+    const historyList = data.players.history || [];
+    const allPlayers = Array.from(new Set([...onlineList, ...historyList]));
+
+    allPlayers.sort((a, b) => {
+      const aOnline = onlineList.includes(a);
+      const bOnline = onlineList.includes(b);
+      if (aOnline && !bOnline) return -1;
+      if (!aOnline && bOnline) return 1;
+      return a.localeCompare(b);
+    });
+
+    // --- Online players element ---
     const online = root.querySelector('#online');
     const countEl = root.querySelector('#player-count');
     
-    countEl.textContent = `${data.players.players.length}/${data.players.max} online`;
+    countEl.textContent = `${onlineList.length}/${data.players.max || 20} online`;
     
-    online.innerHTML = data.players.players.length
-      ? data.players.players.map((p) => `
-          <li class="flex items-center justify-between bg-slate-950/40 border border-slate-850 p-3 rounded-xl hover:border-slate-800 transition-all duration-200">
-            <div class="flex items-center gap-3">
-              <div class="h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-xs select-none">
-                ${p.substring(0, 2).toUpperCase()}
-              </div>
-              <span class="font-medium text-slate-200 text-sm">${p}</span>
-            </div>
-            <div class="flex gap-1.5">
-              <button data-tp="${p}" class="text-xs px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600 border border-blue-500/20 hover:border-blue-500 text-blue-400 hover:text-slate-950 rounded-lg font-medium transition-all duration-250 active:scale-[0.96]">
-                Teleportar
-              </button>
-              <button data-kick="${p}" class="text-xs px-3 py-1.5 bg-red-600/10 hover:bg-red-650 border border-red-500/20 hover:border-red-600 text-red-400 hover:text-white rounded-lg font-medium transition-all duration-250 active:scale-[0.96]">
-                Expulsar
-              </button>
-            </div>
-          </li>`).join('')
+    online.innerHTML = allPlayers.length
+      ? allPlayers.map((p) => {
+          const isOnline = onlineList.includes(p);
+          if (isOnline) {
+            return `
+              <li class="flex items-center justify-between bg-slate-950/40 border border-slate-800 p-3 rounded-xl hover:border-slate-700 transition-all duration-200">
+                <div class="flex items-center gap-3">
+                  <div class="relative h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-xs select-none">
+                    ${p.substring(0, 2).toUpperCase()}
+                    <span class="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    </span>
+                  </div>
+                  <div class="flex flex-col">
+                    <span class="font-medium text-slate-200 text-sm">${p}</span>
+                    <span class="text-[10px] text-emerald-400 font-semibold">Online</span>
+                  </div>
+                </div>
+                <div class="flex gap-1.5">
+                  <button data-tp="${p}" class="text-xs px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600 border border-blue-500/20 hover:border-blue-500 text-blue-400 hover:text-slate-950 rounded-lg font-medium transition-all duration-250 active:scale-[0.96]">
+                    Teleportar
+                  </button>
+                  <button data-kick="${p}" class="text-xs px-3 py-1.5 bg-red-600/10 hover:bg-red-650 border border-red-500/20 hover:border-red-600 text-red-400 hover:text-white rounded-lg font-medium transition-all duration-250 active:scale-[0.96]">
+                    Expulsar
+                  </button>
+                </div>
+              </li>`;
+          } else {
+            return `
+              <li class="flex items-center justify-between bg-slate-950/20 border border-slate-900/60 p-3 rounded-xl opacity-60">
+                <div class="flex items-center gap-3">
+                  <div class="h-8 w-8 rounded-lg bg-slate-800/40 text-slate-500 flex items-center justify-center font-bold text-xs select-none">
+                    ${p.substring(0, 2).toUpperCase()}
+                  </div>
+                  <div class="flex flex-col">
+                    <span class="font-medium text-slate-400 text-sm">${p}</span>
+                    <span class="text-[10px] text-slate-500">Offline</span>
+                  </div>
+                </div>
+                <div class="flex gap-1.5">
+                </div>
+              </li>`;
+          }
+        }).join('')
       : `
           <div class="flex flex-col items-center justify-center py-8 text-slate-500">
             <svg class="w-8 h-8 opacity-40 mb-2" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z"></path></svg>
-            <span class="text-xs">Nenhum jogador online</span>
+            <span class="text-xs">Nenhum jogador encontrado</span>
           </div>`;
 
     // --- Management forms ---

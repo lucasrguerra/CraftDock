@@ -81,6 +81,18 @@ describe('JavaAdapter', () => {
     expect(list).toEqual([]);
   });
 
+  it('sendCommand sends command unmodified if no slash', async () => {
+    const { rcon, adapter } = make();
+    await adapter.sendCommand('gamerule showcoordinates true');
+    expect(rcon.send).toHaveBeenCalledWith('gamerule showcoordinates true');
+  });
+
+  it('sendCommand strips leading slash from command', async () => {
+    const { rcon, adapter } = make();
+    await adapter.sendCommand('/gamerule showcoordinates true');
+    expect(rcon.send).toHaveBeenCalledWith('gamerule showcoordinates true');
+  });
+
   it('exposes whitelistOn/Off/List capabilities', () => {
     const { adapter } = make();
     expect(adapter.capabilities.has('whitelistOn')).toBe(true);

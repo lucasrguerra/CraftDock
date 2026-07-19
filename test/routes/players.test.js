@@ -26,16 +26,31 @@ function makeApp(adapterOverrides = {}, { propertiesOverrides } = {}) {
   const appState = { getAdapter: vi.fn().mockResolvedValue(adapter) };
   const app = express();
   app.use(express.json());
-  app.use('/api/players', createPlayersRouter({ appState, propertiesService }));
+  app.use('/api/players', createPlayersRouter({ appState, propertiesService, config: { mcDataPath: '/data' } }));
   return { app, adapter, propertiesService };
 }
 
 describe('players routes', () => {
+  it('rejects a name-requiring action with an empty name (does not call the adapter)', async () => {
+    const { app, adapter } = makeApp();
+    const res = await request(app).post('/api/players/whitelistRemove').send({ name: '  ' });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'name_required' });
+    expect(adapter.whitelistRemove).not.toHaveBeenCalled();
+  });
+
+  it('allows name-less actions (whitelistOn) without a name', async () => {
+    const { app, adapter } = makeApp();
+    const res = await request(app).post('/api/players/whitelistOn').send({});
+    expect(res.status).toBe(200);
+    expect(adapter.whitelistOn).toHaveBeenCalled();
+  });
+
   it('GET / returns players and capability list', async () => {
     const { app } = makeApp();
     const res = await request(app).get('/api/players');
     expect(res.body.capabilities).toContain('ban');
-    expect(res.body.players).toEqual({ online: 0, max: 20, players: [] });
+    expect(res.body.players).toEqual({ online: 0, max: 20, players: [], history: [] });
   });
 
   it('GET / returns whitelistEnabled and whitelist', async () => {

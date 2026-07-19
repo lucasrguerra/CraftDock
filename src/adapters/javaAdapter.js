@@ -4,7 +4,7 @@ export function createJavaAdapter(rconService) {
   const send = (cmd) => rconService.send(cmd);
   return {
     get capabilities() { return CAPABILITIES.JAVA; },
-    sendCommand: (raw) => send(raw),
+    sendCommand: (raw) => send(raw.startsWith('/') ? raw.slice(1) : raw),
     async listPlayers() { return parsePlayerList(await send('list')); },
     whitelistAdd: (n) => send(`whitelist add ${n}`),
     whitelistRemove: (n) => send(`whitelist remove ${n}`),

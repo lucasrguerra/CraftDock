@@ -56,7 +56,7 @@ export function createApp(deps) {
   // guarded
   app.use('/api', requireAuth);
   app.use('/api/status', createStatusRouter({ dockerService, appState }));
-  app.use('/api/players', createPlayersRouter({ appState, propertiesService }));
+  app.use('/api/players', createPlayersRouter({ appState, propertiesService, config, dockerService }));
   app.use('/api/properties', createPropertiesRouter({ propertiesService }));
   app.use('/api/world', createWorldRouter({ worldService, upload }));
 
@@ -101,6 +101,7 @@ export function startServer(deps) {
     seedService: deps.seedService,
     sessionMiddleware,
     logger: deps.logger,
+    config: deps.config,
   });
   server.listen(deps.config.port, () => {
     (deps.logger?.info ? deps.logger.info(`listening on :${deps.config.port}`) : console.log(`CraftDock listening on :${deps.config.port}`));

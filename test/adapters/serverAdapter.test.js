@@ -39,4 +39,24 @@ describe('parseWhitelistList', () => {
     );
     expect(res).toEqual(['Lucasrguerra']);
   });
+
+  it('returns empty for an empty Bedrock allowlist (result: null), not garbage', () => {
+    // This is the exact line that produced ghost "names" from log fragments.
+    const res = parseWhitelistList(
+      '[2026-07-18 22:53:21:185 INFO] ###* {"command":"allowlist","result":null} *###'
+    );
+    expect(res).toEqual([]);
+  });
+
+  it('returns empty for a Bedrock allowlist with an empty array', () => {
+    expect(parseWhitelistList('###* {"command":"allowlist","result":[]} *###')).toEqual([]);
+  });
+
+  it('never scrapes names out of an unrelated log line with a colon', () => {
+    expect(parseWhitelistList('[2026-07-18 22:53:23:695 ERROR] Syntax error: Unexpected token')).toEqual([]);
+  });
+
+  it('returns empty (not [""]) for the Java empty-whitelist message', () => {
+    expect(parseWhitelistList('There are no whitelisted players')).toEqual([]);
+  });
 });

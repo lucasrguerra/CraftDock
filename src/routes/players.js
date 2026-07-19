@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { NotSupportedError } from '../adapters/serverAdapter.js';
+import { updatePlayerHistory } from '../services/playerHistory.js';
 
 const ARG_MAP = {
   whitelistAdd: (b) => [b.name],
@@ -16,13 +17,21 @@ const ARG_MAP = {
   teleport: (b) => [b.name, b.target],
 };
 
+// Actions whose first argument is a player name. Guarding against an empty name
+// stops commands like `allowlist remove ` (which the server rejects) from ever
+// being sent — defense in depth against a bad/ghost name reaching the console.
+const NAME_REQUIRED = new Set([
+  'whitelistAdd', 'whitelistRemove', 'op', 'deop', 'pardon', 'ban', 'kick', 'give', 'gamemode', 'teleport',
+]);
+
 /** Returns the server.properties key for the whitelist toggle. */
 function whitelistPropKey(edition) {
   return edition === 'bedrock' ? 'allow-list' : 'white-list';
 }
 
-export function createPlayersRouter({ appState, propertiesService }) {
+export function createPlayersRouter({ appState, propertiesService, config, dockerService }) {
   const router = Router();
+  const mcDataPath = config?.mcDataPath || '/minecraft/data';
 
   router.get('/', async (req, res, next) => {
     try {
@@ -32,9 +41,19 @@ export function createPlayersRouter({ appState, propertiesService }) {
         adapter.whitelistList(),
         propertiesService.read(),
       ]);
-      const propKey = whitelistPropKey(adapter._edition);
+      const edition = adapter._edition;
+      const history = await updatePlayerHistory(mcDataPath, edition, players?.players, dockerService);
+      const propKey = whitelistPropKey(edition);
       const whitelistEnabled = props[propKey] === 'true';
-      res.json({ players, capabilities: [...adapter.capabilities], whitelistEnabled, whitelist });
+      res.json({
+        players: {
+          ...players,
+          history,
+        },
+        capabilities: [...adapter.capabilities],
+        whitelistEnabled,
+        whitelist
+      });
     } catch (err) { next(err); }
   });
 
@@ -42,6 +61,9 @@ export function createPlayersRouter({ appState, propertiesService }) {
     const { action } = req.params;
     const argsFn = ARG_MAP[action];
     if (!argsFn) return res.status(400).json({ error: 'unknown_action' });
+    if (NAME_REQUIRED.has(action) && !String(req.body?.name ?? '').trim()) {
+      return res.status(400).json({ error: 'name_required' });
+    }
     try {
       const adapter = await appState.getAdapter();
       if (typeof adapter[action] !== 'function') {
