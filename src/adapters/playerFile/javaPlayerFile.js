@@ -9,14 +9,16 @@ export function createJavaPlayerFile(config) {
   const playerdataDir = path.join(config.mcDataPath, config.mcWorldName || 'world', 'playerdata');
 
   async function readPlayer(uuid) {
-    let buf;
+    const file = path.join(playerdataDir, `${uuid}.dat`);
+    let buf, stat;
     try {
-      buf = await fsp.readFile(path.join(playerdataDir, `${uuid}.dat`));
+      buf = await fsp.readFile(file);
+      stat = await fsp.stat(file);
     } catch {
       return null; // no save yet for this player
     }
     const { parsed } = await nbt.parse(buf); // auto-detects gzip + endianness
-    return normalizeJava(nbt.simplify(parsed));
+    return { ...normalizeJava(nbt.simplify(parsed)), savedAt: stat.mtime.toISOString() };
   }
 
   return { readPlayer };

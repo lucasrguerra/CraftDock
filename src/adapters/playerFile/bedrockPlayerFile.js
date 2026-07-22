@@ -49,11 +49,15 @@ export function createBedrockPlayerFile(config) {
   }
 
   async function readPlayer(uuid) {
-    return withDb(async (db) => {
+    const data = await withDb(async (db) => {
       const val = await db.get(Buffer.from(SERVER_PREFIX + uuid, 'latin1'));
-      if (!val) return null;
-      return parsePlayerBuffer(val);
+      return val ? parsePlayerBuffer(val) : null;
     });
+    if (!data) return null;
+    try {
+      data.savedAt = fs.statSync(resolveDbPath(config)).mtime.toISOString();
+    } catch { data.savedAt = null; }
+    return data;
   }
 
   // Scan player_server_* entries for the one whose UniqueID matches. NOTE the
