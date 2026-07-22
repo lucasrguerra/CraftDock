@@ -87,4 +87,7 @@ describe('worldService.importWorld', () => {
     await svc.importWorld('/tmp/upload.zip');
     expect(d.fs.mkdir).toHaveBeenCalledWith(path.join('/data', 'worlds.import/My Bedrock World'), { recursive: true });
   });
+
+  // Bundled player-data (craftdock/) migration is covered end-to-end in
+  // worldServiceBackup.test.js (real archiver + unzipper round-trip).
 });

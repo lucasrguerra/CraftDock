@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { NotSupportedError } from '../adapters/serverAdapter.js';
-import { updatePlayerHistory } from '../services/playerHistory.js';
+import { updatePlayerDirectory, resolveName } from '../services/playerDirectory.js';
 
 const ARG_MAP = {
   whitelistAdd: (b) => [b.name],
@@ -31,7 +31,7 @@ function whitelistPropKey(edition) {
 
 export function createPlayersRouter({ appState, propertiesService, config, dockerService }) {
   const router = Router();
-  const mcDataPath = config?.mcDataPath || '/minecraft/data';
+  const dataRoot = config?.mcDataPath || '/minecraft/data';
 
   router.get('/', async (req, res, next) => {
     try {
@@ -42,13 +42,13 @@ export function createPlayersRouter({ appState, propertiesService, config, docke
         propertiesService.read(),
       ]);
       const edition = adapter._edition;
-      const history = await updatePlayerHistory(mcDataPath, edition, players?.players, dockerService);
+      const directory = await updatePlayerDirectory({ dataRoot, dockerService, edition });
       const propKey = whitelistPropKey(edition);
       const whitelistEnabled = props[propKey] === 'true';
       res.json({
         players: {
           ...players,
-          history,
+          directory,
         },
         capabilities: [...adapter.capabilities],
         whitelistEnabled,
@@ -61,6 +61,16 @@ export function createPlayersRouter({ appState, propertiesService, config, docke
     const { action } = req.params;
     const argsFn = ARG_MAP[action];
     if (!argsFn) return res.status(400).json({ error: 'unknown_action' });
+
+    req.body = req.body || {};
+    // XUID is the canonical identity. When the client targets a known player by
+    // xuid, resolve it to the current gamertag here — Bedrock console commands are
+    // name-based, so every action is ultimately issued by name.
+    if (req.body.xuid && !String(req.body.name ?? '').trim()) {
+      const name = await resolveName(dataRoot, String(req.body.xuid));
+      if (name) req.body.name = name;
+    }
+
     if (NAME_REQUIRED.has(action) && !String(req.body?.name ?? '').trim()) {
       return res.status(400).json({ error: 'name_required' });
     }

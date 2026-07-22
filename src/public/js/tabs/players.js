@@ -28,7 +28,12 @@ export function renderPlayers(root) {
             </h2>
             <span id="player-count" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700/50 text-slate-400">0 online</span>
           </div>
-          
+
+          <div class="relative mb-3">
+            <svg class="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"></path></svg>
+            <input id="player-search" type="text" placeholder="Filtrar por nome..." class="w-full pl-9 pr-3 py-2 text-sm rounded-xl bg-slate-950/80 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all duration-200" />
+          </div>
+
           <ul id="online" class="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
             <li class="text-slate-400 text-sm italic py-4 text-center">Carregando...</li>
           </ul>
@@ -65,6 +70,7 @@ export function renderPlayers(root) {
 
   let capabilities = new Set();
   let currentWhitelistEnabled = false;
+  let lastData = null;
 
   const action = (act, body) => api(`/api/players/${act}`, { method: 'POST', body }).then(refresh);
 
@@ -98,6 +104,100 @@ export function renderPlayers(root) {
     }
   }
 
+  // Builds the player list from online players + the persisted XUID directory,
+  // filtered by the search box. Called on every refresh and on each keystroke.
+  function renderPlayerList() {
+    if (!lastData) return;
+    const online = root.querySelector('#online');
+    const countEl = root.querySelector('#player-count');
+    if (!online) return;
+
+    const onlineNames = lastData.players.players || [];
+    const directory = lastData.players.directory || [];
+    const byName = new Map(directory.map((e) => [e.name, e]));
+
+    // Union of currently-online names and everyone in the directory. XUID is the
+    // canonical identity; online players are matched to their XUID by name.
+    const names = new Set([...onlineNames, ...directory.map((e) => e.name)]);
+    let entries = [...names].map((name) => ({
+      name,
+      xuid: byName.get(name)?.xuid || null,
+      isOnline: onlineNames.includes(name),
+    }));
+
+    const q = (root.querySelector('#player-search')?.value || '').trim().toLowerCase();
+    if (q) entries = entries.filter((e) => e.name.toLowerCase().includes(q));
+
+    entries.sort((a, b) => {
+      if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    countEl.textContent = `${onlineNames.length}/${lastData.players.max || 20} online`;
+
+    online.innerHTML = entries.length
+      ? entries.map((e) => {
+          const initials = e.name.substring(0, 2).toUpperCase();
+          const xuidTag = e.xuid
+            ? `<span class="text-[10px] text-slate-500 font-mono" title="XUID">${e.xuid}</span>`
+            : '';
+          if (e.isOnline) {
+            return `
+              <li class="flex items-center justify-between bg-slate-950/40 border border-slate-800 p-3 rounded-xl hover:border-slate-700 transition-all duration-200">
+                <div class="flex items-center gap-3">
+                  <div class="relative h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-xs select-none">
+                    ${initials}
+                    <span class="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    </span>
+                  </div>
+                  <div class="flex flex-col">
+                    <span class="font-medium text-slate-200 text-sm">${e.name}</span>
+                    <span class="text-[10px] text-emerald-400 font-semibold">Online${e.xuid ? ' · ' : ''}${e.xuid ? `<span class="text-slate-500 font-mono font-normal">${e.xuid}</span>` : ''}</span>
+                  </div>
+                </div>
+                <div class="flex gap-1.5">
+                  <button data-tp="${e.name}" class="text-xs px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600 border border-blue-500/20 hover:border-blue-500 text-blue-400 hover:text-slate-950 rounded-lg font-medium transition-all duration-250 active:scale-[0.96]">
+                    Teleportar
+                  </button>
+                  <button data-kick="${e.name}" class="text-xs px-3 py-1.5 bg-red-600/10 hover:bg-red-650 border border-red-500/20 hover:border-red-600 text-red-400 hover:text-white rounded-lg font-medium transition-all duration-250 active:scale-[0.96]">
+                    Expulsar
+                  </button>
+                </div>
+              </li>`;
+          }
+          return `
+              <li class="flex items-center justify-between bg-slate-950/20 border border-slate-900/60 p-3 rounded-xl opacity-60">
+                <div class="flex items-center gap-3">
+                  <div class="h-8 w-8 rounded-lg bg-slate-800/40 text-slate-500 flex items-center justify-center font-bold text-xs select-none">
+                    ${initials}
+                  </div>
+                  <div class="flex flex-col">
+                    <span class="font-medium text-slate-400 text-sm">${e.name}</span>
+                    <span class="text-[10px] text-slate-500">Offline${e.xuid ? ' · ' : ''}${xuidTag}</span>
+                  </div>
+                </div>
+                <div class="flex gap-1.5"></div>
+              </li>`;
+        }).join('')
+      : `
+          <div class="flex flex-col items-center justify-center py-8 text-slate-500">
+            <svg class="w-8 h-8 opacity-40 mb-2" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z"></path></svg>
+            <span class="text-xs">${q ? 'Nenhum jogador corresponde ao filtro' : 'Nenhum jogador encontrado'}</span>
+          </div>`;
+
+    online.querySelectorAll('[data-kick]').forEach((b) => {
+      b.onclick = () => action('kick', { name: b.dataset.kick });
+    });
+    online.querySelectorAll('[data-tp]').forEach((b) => {
+      b.onclick = () => {
+        const target = prompt('Teleportar para (jogador ou coordenadas x y z):');
+        if (target) action('teleport', { name: b.dataset.tp, target });
+      };
+    });
+  }
+
   async function refresh() {
     const data = await api('/api/players');
     if (!data) return;
@@ -112,75 +212,9 @@ export function renderPlayers(root) {
       action(act, {});
     };
 
-    // --- Combine online players and history ---
-    const onlineList = data.players.players || [];
-    const historyList = data.players.history || [];
-    const allPlayers = Array.from(new Set([...onlineList, ...historyList]));
-
-    allPlayers.sort((a, b) => {
-      const aOnline = onlineList.includes(a);
-      const bOnline = onlineList.includes(b);
-      if (aOnline && !bOnline) return -1;
-      if (!aOnline && bOnline) return 1;
-      return a.localeCompare(b);
-    });
-
-    // --- Online players element ---
-    const online = root.querySelector('#online');
-    const countEl = root.querySelector('#player-count');
-    
-    countEl.textContent = `${onlineList.length}/${data.players.max || 20} online`;
-    
-    online.innerHTML = allPlayers.length
-      ? allPlayers.map((p) => {
-          const isOnline = onlineList.includes(p);
-          if (isOnline) {
-            return `
-              <li class="flex items-center justify-between bg-slate-950/40 border border-slate-800 p-3 rounded-xl hover:border-slate-700 transition-all duration-200">
-                <div class="flex items-center gap-3">
-                  <div class="relative h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-xs select-none">
-                    ${p.substring(0, 2).toUpperCase()}
-                    <span class="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                    </span>
-                  </div>
-                  <div class="flex flex-col">
-                    <span class="font-medium text-slate-200 text-sm">${p}</span>
-                    <span class="text-[10px] text-emerald-400 font-semibold">Online</span>
-                  </div>
-                </div>
-                <div class="flex gap-1.5">
-                  <button data-tp="${p}" class="text-xs px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600 border border-blue-500/20 hover:border-blue-500 text-blue-400 hover:text-slate-950 rounded-lg font-medium transition-all duration-250 active:scale-[0.96]">
-                    Teleportar
-                  </button>
-                  <button data-kick="${p}" class="text-xs px-3 py-1.5 bg-red-600/10 hover:bg-red-650 border border-red-500/20 hover:border-red-600 text-red-400 hover:text-white rounded-lg font-medium transition-all duration-250 active:scale-[0.96]">
-                    Expulsar
-                  </button>
-                </div>
-              </li>`;
-          } else {
-            return `
-              <li class="flex items-center justify-between bg-slate-950/20 border border-slate-900/60 p-3 rounded-xl opacity-60">
-                <div class="flex items-center gap-3">
-                  <div class="h-8 w-8 rounded-lg bg-slate-800/40 text-slate-500 flex items-center justify-center font-bold text-xs select-none">
-                    ${p.substring(0, 2).toUpperCase()}
-                  </div>
-                  <div class="flex flex-col">
-                    <span class="font-medium text-slate-400 text-sm">${p}</span>
-                    <span class="text-[10px] text-slate-500">Offline</span>
-                  </div>
-                </div>
-                <div class="flex gap-1.5">
-                </div>
-              </li>`;
-          }
-        }).join('')
-      : `
-          <div class="flex flex-col items-center justify-center py-8 text-slate-500">
-            <svg class="w-8 h-8 opacity-40 mb-2" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z"></path></svg>
-            <span class="text-xs">Nenhum jogador encontrado</span>
-          </div>`;
+    // --- Known players (online + XUID directory), filterable by name ---
+    lastData = data;
+    renderPlayerList();
 
     // --- Management forms ---
     const mgmt = root.querySelector('#mgmt');
@@ -203,17 +237,6 @@ export function renderPlayers(root) {
         const input = f.querySelector('input[name="name"]');
         action(f.dataset.act, { name: input.value });
         input.value = '';
-      };
-    });
-    
-    online.querySelectorAll('[data-kick]').forEach((b) => {
-      b.onclick = () => action('kick', { name: b.dataset.kick });
-    });
-    
-    online.querySelectorAll('[data-tp]').forEach((b) => {
-      b.onclick = () => {
-        const target = prompt('Teleportar para (jogador ou coordenadas x y z):');
-        if (target) action('teleport', { name: b.dataset.tp, target });
       };
     });
 
@@ -246,6 +269,9 @@ export function renderPlayers(root) {
       whitelistCard.classList.add('hidden');
     }
   }
+
+  // Re-filter instantly on each keystroke, without waiting for the next refresh.
+  root.querySelector('#player-search').addEventListener('input', renderPlayerList);
 
   refresh();
   const timer = setInterval(refresh, 5000);

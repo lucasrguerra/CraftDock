@@ -50,7 +50,7 @@ describe('players routes', () => {
     const { app } = makeApp();
     const res = await request(app).get('/api/players');
     expect(res.body.capabilities).toContain('ban');
-    expect(res.body.players).toEqual({ online: 0, max: 20, players: [], history: [] });
+    expect(res.body.players).toEqual({ online: 0, max: 20, players: [], directory: [] });
   });
 
   it('GET / returns whitelistEnabled and whitelist', async () => {

@@ -1,4 +1,4 @@
-import { updatePlayerHistory } from '../services/playerHistory.js';
+import { updatePlayerDirectory } from '../services/playerDirectory.js';
 
 export async function buildStatusPayload({ dockerService, appState, seedService, logger, config }) {
   const info = await dockerService.inspect();
@@ -25,8 +25,10 @@ export async function buildStatusPayload({ dockerService, appState, seedService,
 
     players = await adapter.listPlayers();
     if (config) {
-      const history = await updatePlayerHistory(config.mcDataPath, edition, players?.players, dockerService);
-      players = { ...players, history };
+      // XUID-keyed directory of everyone who really accessed the world. Persisted
+      // at the data root, so `mcDataPath` (not the world subfolder) is the root.
+      const directory = await updatePlayerDirectory({ dataRoot: config.mcDataPath, dockerService, edition });
+      players = { ...players, directory };
     }
     seed = await seedService.resolve(adapter, edition);
   } catch (err) {
