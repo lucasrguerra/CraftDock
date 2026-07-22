@@ -19,6 +19,10 @@ export function createDockerService(config, docker) {
   const name = config.mcContainerName;
   const serviceName = config.mcServiceName;
   let ownProjectCache;
+  let statsCache = null;
+  let lastStatsTime = 0;
+  let inFlightStatsPromise = null;
+
 
   // The panel's own compose project, read by self-inspecting the panel container
   // (its hostname is its container id). Used to scope the service-label fallback
@@ -89,28 +93,45 @@ export function createDockerService(config, docker) {
     },
 
     async stats() {
-      let container;
-      try {
-        container = await resolve();
-      } catch {
-        return { cpuPct: 0, memUsedMb: 0, memPct: 0 };
+      const now = Date.now();
+      if (statsCache && (now - lastStatsTime < 2000)) {
+        return statsCache;
       }
-      const s = await container.stats({ stream: false });
-      const cpuDelta =
-        (s.cpu_stats?.cpu_usage?.total_usage ?? 0) -
-        (s.precpu_stats?.cpu_usage?.total_usage ?? 0);
-      const sysDelta =
-        (s.cpu_stats?.system_cpu_usage ?? 0) - (s.precpu_stats?.system_cpu_usage ?? 0);
-      const cpus = s.cpu_stats?.online_cpus || 1;
-      const cpuPct = sysDelta > 0 ? (cpuDelta / sysDelta) * cpus * 100 : 0;
-      const memUsed = s.memory_stats?.usage ?? 0;
-      const memLimit = s.memory_stats?.limit || 1;
-      return {
-        cpuPct: Math.round(cpuPct * 10) / 10,
-        memUsedMb: Math.round(memUsed / (1024 * 1024)),
-        memPct: Math.round((memUsed / memLimit) * 1000) / 10,
-      };
+      if (inFlightStatsPromise) {
+        return inFlightStatsPromise;
+      }
+
+      inFlightStatsPromise = (async () => {
+        try {
+          const container = await resolve();
+          const s = await container.stats({ stream: false });
+          const cpuDelta =
+            (s.cpu_stats?.cpu_usage?.total_usage ?? 0) -
+            (s.precpu_stats?.cpu_usage?.total_usage ?? 0);
+          const sysDelta =
+            (s.cpu_stats?.system_cpu_usage ?? 0) - (s.precpu_stats?.system_cpu_usage ?? 0);
+          const cpus = s.cpu_stats?.online_cpus || 1;
+          const cpuPct = sysDelta > 0 ? (cpuDelta / sysDelta) * cpus * 100 : 0;
+          const memUsed = s.memory_stats?.usage ?? 0;
+          const memLimit = s.memory_stats?.limit || 1;
+
+          statsCache = {
+            cpuPct: Math.round(cpuPct * 10) / 10,
+            memUsedMb: Math.round(memUsed / (1024 * 1024)),
+            memPct: Math.round((memUsed / memLimit) * 1000) / 10,
+          };
+          lastStatsTime = Date.now();
+          return statsCache;
+        } catch {
+          return statsCache || { cpuPct: 0, memUsedMb: 0, memPct: 0 };
+        } finally {
+          inFlightStatsPromise = null;
+        }
+      })();
+
+      return inFlightStatsPromise;
     },
+
 
     async logStream(tail = 200) {
       const container = await resolve();

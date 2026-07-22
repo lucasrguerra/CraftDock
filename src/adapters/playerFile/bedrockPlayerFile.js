@@ -8,6 +8,41 @@ const { LevelDB, Iterator } = pkg;
 
 const SERVER_PREFIX = 'player_server_';
 
+// Helper for matching uniqueId whether given as a decimal integer string or UUID format string
+export function matchUniqueId(a, b) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const cleanA = String(a).replace(/-/g, '').toLowerCase();
+  const cleanB = String(b).replace(/-/g, '').toLowerCase();
+  if (cleanA === cleanB) return true;
+
+  // Bedrock querytarget uniqueId can be a 128-bit UUID string or 64-bit int string / decimal
+  // Compare low 64 bits or numeric BigInt representations if compatible
+  try {
+    const toBigInt = (str) => {
+      const c = str.replace(/-/g, '');
+      if (/^[0-9a-f]{32}$/i.test(c)) {
+        // Take lower 64 bits of hex UUID
+        const lowHex = c.slice(16);
+        const big = BigInt('0x' + lowHex);
+        const shift = 1n << 63n;
+        const mask = (1n << 64n) - 1n;
+        const val = big & mask;
+        return val >= shift ? val - (1n << 64n) : val;
+      }
+      if (/^-?\d+$/.test(str)) {
+        return BigInt(str);
+      }
+      return null;
+    };
+    const bigA = toBigInt(String(a));
+    const bigB = toBigInt(String(b));
+    if (bigA !== null && bigB !== null && bigA === bigB) return true;
+  } catch { /* ignore parse error */ }
+
+  return false;
+}
+
 // Parse one Bedrock player NBT value (little-endian) into PlayerData.
 export async function parsePlayerBuffer(buf) {
   const { parsed } = await nbt.parse(Buffer.from(buf), 'little');
@@ -63,6 +98,7 @@ export function createBedrockPlayerFile(config) {
   // Scan player_server_* entries for the one whose UniqueID matches. NOTE the
   // leveldb-zlib iterator yields tuples as [value, key].
   async function findByUniqueId(uniqueId) {
+    const targetStr = String(uniqueId);
     return withDb(async (db) => {
       const iter = new Iterator(db, { keys: true, values: true });
       try {
@@ -71,7 +107,12 @@ export function createBedrockPlayerFile(config) {
           const key = latin1(e[1]);
           if (!key.startsWith(SERVER_PREFIX)) continue;
           const data = await parsePlayerBuffer(e[0]);
-          if (data.uniqueId === String(uniqueId)) {
+          if (!data?.uniqueId) continue;
+          
+          if (
+            data.uniqueId === targetStr ||
+            matchUniqueId(data.uniqueId, targetStr)
+          ) {
             return { uuid: key.slice(SERVER_PREFIX.length), data };
           }
         }

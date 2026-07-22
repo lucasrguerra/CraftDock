@@ -14,13 +14,16 @@
 const SUPPORTED = { health: true, food: true, inventory: true };
 
 async function withSnapshot(adapter, fn) {
-  await adapter.saveHold();
+  const held = await adapter.saveHold();
   try {
     return await fn();
   } finally {
-    await adapter.saveResume();
+    if (held) {
+      await adapter.saveResume();
+    }
   }
 }
+
 
 export function createPlayerDetailService({
   config, appState, dockerService, readDirectory, createFileAdapter, createBridge,

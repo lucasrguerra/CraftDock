@@ -173,7 +173,11 @@ export function createWorldService({ config, dockerService, propertiesService, f
     if (hasAux) {
       const files = await fs.readdir(auxTemp);
       for (const file of files) {
-        await fs.rename(path.join(auxTemp, file), path.join(config.mcDataPath, file));
+        const dest = path.join(config.mcDataPath, file);
+        await fs.rename(path.join(auxTemp, file), dest);
+        if (typeof fs.chmod === 'function') {
+          await fs.chmod(dest, 0o666).catch(() => {});
+        }
       }
       await fs.rm(auxTemp, { recursive: true, force: true });
     }

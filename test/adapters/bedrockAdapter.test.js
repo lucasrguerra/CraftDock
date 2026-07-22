@@ -11,7 +11,13 @@ describe('BedrockAdapter', () => {
   it('whitelistAdd maps to "allowlist add"', async () => {
     const { stdin, adapter } = make();
     await adapter.whitelistAdd('steve');
-    expect(stdin.send).toHaveBeenCalledWith('allowlist add steve');
+    expect(stdin.send).toHaveBeenCalledWith('allowlist add "steve"');
+  });
+
+  it('whitelistRemove maps to "allowlist remove"', async () => {
+    const { stdin, adapter } = make();
+    await adapter.whitelistRemove('steve');
+    expect(stdin.send).toHaveBeenCalledWith('allowlist remove "steve"');
   });
 
   it('ban throws NotSupportedError', async () => {

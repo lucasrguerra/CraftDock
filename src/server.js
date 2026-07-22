@@ -19,11 +19,20 @@ export function createApp(deps) {
   const { config, dockerService, appState, propertiesService, worldService, authService, upload, seedService, logger } = deps;
   const app = express();
 
-  // Request logging (debug level).
+  // Request logging (info level).
   if (logger) {
     app.use((req, res, next) => {
+      const start = Date.now();
       res.on('finish', () => {
-        logger.debug('http', { method: req.method, url: req.originalUrl, status: res.statusCode });
+        const durationMs = Date.now() - start;
+        if (req.originalUrl === '/api/health' && res.statusCode === 200) return;
+        const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
+        logger[level](`${req.method} ${req.originalUrl} ${res.statusCode} - ${durationMs}ms`, {
+          method: req.method,
+          url: req.originalUrl,
+          status: res.statusCode,
+          durationMs,
+        });
       });
       next();
     });

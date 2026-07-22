@@ -28,31 +28,38 @@ export async function buildStatusPayload({ dockerService, appState, seedService,
       // Keep the XUID directory fresh (captures Player Spawned lines) but do NOT
       // ship the whole list on the 2s status feed — it can hold thousands of
       // entries. The Players tab fetches it page-by-page from GET /players/directory.
-      await updatePlayerDirectory({ dataRoot: config.mcDataPath, dockerService, edition });
+      await updatePlayerDirectory({
+        dataRoot: config.mcDataPath,
+        dockerService,
+        edition,
+        logger,
+        minIntervalMs: 5000,
+      });
     }
     seed = await seedService.resolve(adapter, edition);
   } catch (err) {
-    logger?.warn('status payload: command channel not ready', { error: err.message });
+    logger?.warn('status payload: command channel or step failed', { error: err.message, stack: err.stack });
   }
   return { state: info.state, type, ...stats, players, seed };
 }
 
 export function registerStatusSocket(namespace, { dockerService, appState, seedService, logger, config, intervalMs = 2000 }) {
   namespace.on('connection', (socket) => {
-    logger?.debug('status socket connected', { id: socket.id });
+    logger?.info('status socket connected', { id: socket.id });
     const push = async () => {
       try {
         socket.emit('status', await buildStatusPayload({ dockerService, appState, seedService, logger, config }));
       } catch (err) {
-        logger?.error('status push failed', err);
+        logger?.error('status push failed', { error: err.message, stack: err.stack });
         socket.emit('status', { state: 'error', error: err.message });
       }
     };
     push();
     const timer = setInterval(push, intervalMs);
     socket.on('disconnect', () => {
-      logger?.debug('status socket disconnected', { id: socket.id });
+      logger?.info('status socket disconnected', { id: socket.id });
       clearInterval(timer);
     });
   });
 }
+

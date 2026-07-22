@@ -4,6 +4,8 @@ import unzipper from 'unzipper';
 import multer from 'multer';
 import os from 'node:os';
 import { createReadStream } from 'node:fs';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
 
 import { loadConfig } from './config.js';
 import { logger } from './logger.js';
@@ -18,6 +20,31 @@ import { createAppState } from './appState.js';
 import { startServer } from './server.js';
 
 const config = loadConfig();
+
+process.on('uncaughtException', (err) => {
+  logger.error('uncaught exception', { error: err.message, stack: err.stack, cause: err.cause });
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('unhandled promise rejection', {
+    error: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined,
+  });
+});
+
+// Ensure shared configuration files have correct permissions (writable by anyone)
+// so the Minecraft container (running as user minecraft UID 1000) does not hit write permission errors.
+const FILES_TO_CHMOD = [
+  'allowlist.json', 'permissions.json',
+  'whitelist.json', 'ops.json', 'usercache.json',
+  'banned-players.json', 'banned-ips.json',
+  'craftdock_players_history.json', 'craftdock_players.json',
+  'server.properties'
+];
+for (const file of FILES_TO_CHMOD) {
+  const p = path.join(config.mcDataPath, file);
+  fsp.chmod(p, 0o666).catch(() => {});
+}
 const docker = new Docker(); // uses /var/run/docker.sock by default
 
 const dockerService = createDockerService(config, docker);
