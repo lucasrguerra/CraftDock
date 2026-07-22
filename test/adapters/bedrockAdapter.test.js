@@ -114,4 +114,32 @@ describe('BedrockAdapter', () => {
     expect(adapter.capabilities.has('whitelistOff')).toBe(true);
     expect(adapter.capabilities.has('whitelistList')).toBe(true);
   });
+
+  it('saveHold sends "save hold" then polls "save query" until ready', async () => {
+    const { stdin, adapter } = make(async (cmd) =>
+      cmd === 'save query' ? 'Data saved. Files are now ready to be copied.' : 'ok');
+    const ok = await adapter.saveHold();
+    expect(ok).toBe(true);
+    expect(stdin.send).toHaveBeenCalledWith('save hold');
+    expect(stdin.send).toHaveBeenCalledWith('save query');
+  });
+
+  it('saveResume sends "save resume"', async () => {
+    const { stdin, adapter } = make();
+    await adapter.saveResume();
+    expect(stdin.send).toHaveBeenCalledWith('save resume');
+  });
+
+  it('queryUniqueId extracts the uniqueId from querytarget output', async () => {
+    const { adapter } = make(async (cmd) =>
+      cmd.startsWith('querytarget')
+        ? '[{"dimension":0,"position":{"x":1,"y":2,"z":3},"uniqueId":"-8589934591"}]'
+        : 'ok');
+    expect(await adapter.queryUniqueId('alex')).toBe('-8589934591');
+  });
+
+  it('queryUniqueId returns null when querytarget fails', async () => {
+    const { adapter } = make(async () => 'Unknown command');
+    expect(await adapter.queryUniqueId('alex')).toBeNull();
+  });
 });

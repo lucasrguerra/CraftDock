@@ -19,6 +19,9 @@ export function createJavaAdapter(rconService) {
     give: (n, item, count = 1) => send(`give ${n} ${item} ${count}`),
     gamemode: (n, mode) => send(`gamemode ${mode} ${n}`),
     teleport: (n, target) => send(`tp ${n} ${target}`),
+    // Flush all worlds to disk so a subsequent playerdata read is fresh. Java's
+    // save is atomic per file, so no hold/resume dance is needed.
+    forceSave: () => send('save-all flush'),
     async getSeed() {
       const res = await send('seed');
       const clean = res.replace(/§[0-9a-fk-or]/ig, '');
