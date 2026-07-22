@@ -25,10 +25,10 @@ export async function buildStatusPayload({ dockerService, appState, seedService,
 
     players = await adapter.listPlayers();
     if (config) {
-      // XUID-keyed directory of everyone who really accessed the world. Persisted
-      // at the data root, so `mcDataPath` (not the world subfolder) is the root.
-      const directory = await updatePlayerDirectory({ dataRoot: config.mcDataPath, dockerService, edition });
-      players = { ...players, directory };
+      // Keep the XUID directory fresh (captures Player Spawned lines) but do NOT
+      // ship the whole list on the 2s status feed — it can hold thousands of
+      // entries. The Players tab fetches it page-by-page from GET /players/directory.
+      await updatePlayerDirectory({ dataRoot: config.mcDataPath, dockerService, edition });
     }
     seed = await seedService.resolve(adapter, edition);
   } catch (err) {

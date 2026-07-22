@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { NotSupportedError } from '../adapters/serverAdapter.js';
-import { updatePlayerDirectory, resolveName } from '../services/playerDirectory.js';
+import { resolveName, queryDirectory, readDirectory } from '../services/playerDirectory.js';
+import { createPlayerFileAdapter } from '../adapters/playerFile/index.js';
+import { createBedrockIdentityBridge } from '../services/bedrockIdentityBridge.js';
+import { createPlayerDetailService } from '../services/playerDetailService.js';
 
 const ARG_MAP = {
   whitelistAdd: (b) => [b.name],
@@ -33,6 +36,15 @@ export function createPlayersRouter({ appState, propertiesService, config, docke
   const router = Router();
   const dataRoot = config?.mcDataPath || '/minecraft/data';
 
+  const detailService = createPlayerDetailService({
+    config, appState, dockerService,
+    readDirectory,
+    createFileAdapter: createPlayerFileAdapter,
+    createBridge: createBedrockIdentityBridge,
+  });
+
+  // Online players + whitelist + capabilities. The (potentially huge) directory
+  // is NOT embedded here — it is fetched page-by-page from GET /directory.
   router.get('/', async (req, res, next) => {
     try {
       const adapter = await appState.getAdapter();
@@ -42,18 +54,45 @@ export function createPlayersRouter({ appState, propertiesService, config, docke
         propertiesService.read(),
       ]);
       const edition = adapter._edition;
-      const directory = await updatePlayerDirectory({ dataRoot, dockerService, edition });
       const propKey = whitelistPropKey(edition);
       const whitelistEnabled = props[propKey] === 'true';
       res.json({
-        players: {
-          ...players,
-          directory,
-        },
+        players,
         capabilities: [...adapter.capabilities],
         whitelistEnabled,
-        whitelist
+        whitelist,
       });
+    } catch (err) { next(err); }
+  });
+
+  // Server-side paginated + filtered directory; each item annotated `online`.
+  router.get('/directory', async (req, res, next) => {
+    try {
+      const page = Number(req.query.page) || 1;
+      const pageSize = Number(req.query.pageSize) || 25;
+      const q = req.query.q || '';
+      const result = await queryDirectory(dataRoot, { page, pageSize, q });
+      let onlineNames = [];
+      try {
+        const adapter = await appState.getAdapter();
+        onlineNames = (await adapter.listPlayers())?.players || [];
+      } catch { /* server may be down — everyone shows offline */ }
+      const online = new Set(onlineNames);
+      res.json({
+        ...result,
+        items: result.items.map((e) => ({ ...e, online: online.has(e.name) })),
+      });
+    } catch (err) { next(err); }
+  });
+
+  // Rich per-player data read from the world save (position/health/food/inventory).
+  router.get('/detail', async (req, res, next) => {
+    try {
+      const xuid = String(req.query.xuid || '');
+      if (!xuid) return res.status(400).json({ error: 'xuid_required' });
+      const detail = await detailService.getDetail(xuid);
+      if (!detail) return res.status(404).json({ error: 'not_found' });
+      res.json(detail);
     } catch (err) { next(err); }
   });
 

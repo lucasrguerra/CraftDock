@@ -171,3 +171,23 @@ export async function resolveName(dataRoot, xuid) {
   const dir = await readDirectory(dataRoot);
   return dir[xuid]?.name || null;
 }
+
+/**
+ * Server-side paginated + filtered view of the directory. Scales to very large
+ * directories: the client fetches one page at a time instead of the whole list.
+ * @returns {Promise<{ items: Array, total: number, page: number, pageSize: number }>}
+ */
+export async function queryDirectory(dataRoot, { page = 1, pageSize = 25, q = '' } = {}) {
+  const dir = await readDirectory(dataRoot);
+  const needle = String(q || '').trim().toLowerCase();
+  let items = Object.values(dir);
+  if (needle) items = items.filter((e) => e.name?.toLowerCase().includes(needle));
+  items.sort((a, b) => a.name.localeCompare(b.name));
+
+  const total = items.length;
+  const size = Math.max(1, pageSize | 0);
+  const pageCount = Math.max(1, Math.ceil(total / size));
+  const current = Math.min(Math.max(1, page | 0), pageCount);
+  const start = (current - 1) * size;
+  return { items: items.slice(start, start + size), total, page: current, pageSize: size };
+}
