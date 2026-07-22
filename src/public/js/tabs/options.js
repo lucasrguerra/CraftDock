@@ -9,14 +9,14 @@ const CATEGORIES = [
         key: 'difficulty',
         label: 'Dificuldade',
         type: 'enum',
-        values: ['peaceful', 'easy', 'normal', 'hard'],
+        values: ['Pacífico', 'Fácil', 'Normal', 'Difícil'],
         description: 'Define o nível de dificuldade do jogo, controlando dano de monstros, fome e geração de mobs hostis.',
       },
       {
         key: 'gamemode',
         label: 'Modo de Jogo Padrão',
         type: 'enum',
-        values: ['survival', 'creative', 'adventure', 'spectator'],
+        values: ['Sobrevivência', 'Criativo', 'Aventura', 'Espectador'],
         description: 'Determina o modo de jogo atribuído aos novos jogadores que se conectarem ao mundo.',
       },
       {
@@ -85,14 +85,9 @@ const CATEGORIES = [
         type: 'boolean',
         description: 'Controla a criação e permanência de Villagers (Aldeões) nas vilas.',
       },
-      {
-        key: 'level-seed',
-        label: 'Semente do Mundo (Seed)',
-        type: 'string',
-        description: 'Semente matemática usada para gerar o terreno do novo mundo.',
-      },
     ],
   },
+
   {
     title: 'Desempenho, Limites e Apresentação',
     icon: `<svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>`,
