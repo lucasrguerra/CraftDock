@@ -1,5 +1,7 @@
 import { parsePlayerList, parseWhitelistList, CAPABILITIES, NotSupportedError } from './serverAdapter.js';
 
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
 export function createBedrockAdapter(stdinService) {
   const send = (cmd) => stdinService.send(cmd);
   return {
@@ -19,6 +21,38 @@ export function createBedrockAdapter(stdinService) {
     give: (n, item, count = 1) => send(`give ${n} ${item} ${count}`),
     gamemode: (n, mode) => send(`gamemode ${mode} ${n}`),
     teleport: (n, target) => send(`tp ${n} ${target}`),
+    // Snapshot protocol for safely reading the LevelDB while the server runs:
+    // `save hold` → poll `save query` until the files are flushed and ready →
+    // (caller reads the files) → `saveResume`. Returns true when ready.
+    async saveHold() {
+      await send('save hold');
+      for (let i = 0; i < 12; i++) {
+        const out = await send('save query');
+        if (/ready to be copied|Data saved/i.test(out)) return true;
+        await delay(250);
+      }
+      return false;
+    },
+    saveResume: () => send('save resume'),
+    // Returns the live entity's uniqueId (matches the LevelDB player's UniqueID),
+    // used to bridge a gamertag to its LevelDB record. Online players only.
+    async queryUniqueId(n) {
+      try {
+        const res = await send(`querytarget @a[name="${n}"]`);
+        if (!res) return null;
+        let clean = res.replace(/§[0-9a-fk-or]/ig, '').trim();
+        clean = clean.replace(/^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}:\d{3}\s+\w+\]\s*/gm, '');
+        if (clean.includes('Target data:')) {
+          clean = clean.substring(clean.indexOf('Target data:') + 'Target data:'.length);
+        }
+        const s = clean.indexOf('['), e = clean.lastIndexOf(']');
+        if (s === -1 || e === -1 || e <= s) return null;
+        const data = JSON.parse(clean.substring(s, e + 1));
+        return data?.[0]?.uniqueId != null ? String(data[0].uniqueId) : null;
+      } catch {
+        return null;
+      }
+    },
     // NOTE: Bedrock has no `seed` console command (Java-only). The seed is read
     // from worlds/<level-name>/level.dat by seedService — do NOT add getSeed here.
     async getPlayerPosition(n) {

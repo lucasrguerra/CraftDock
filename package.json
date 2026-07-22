@@ -2,7 +2,9 @@
   "name": "craftdock",
   "version": "0.1.0",
   "type": "module",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node src/main.js",
     "dev": "node --watch --env-file=.env src/main.js",
@@ -16,7 +18,9 @@
     "dockerode": "^4.0.2",
     "express": "^4.19.2",
     "express-session": "^1.18.0",
+    "leveldb-zlib": "^1.2.0",
     "multer": "^1.4.5-lts.1",
+    "prismarine-nbt": "^2.8.0",
     "rcon-client": "^4.2.4",
     "socket.io": "^4.7.5",
     "unzipper": "^0.10.14"

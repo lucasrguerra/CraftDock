@@ -99,4 +99,10 @@ describe('JavaAdapter', () => {
     expect(adapter.capabilities.has('whitelistOff')).toBe(true);
     expect(adapter.capabilities.has('whitelistList')).toBe(true);
   });
+
+  it('forceSave issues "save-all flush"', async () => {
+    const { rcon, adapter } = make();
+    await adapter.forceSave();
+    expect(rcon.send).toHaveBeenCalledWith('save-all flush');
+  });
 });

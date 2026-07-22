@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fsp from 'node:fs/promises';
-import { updatePlayerDirectory } from '../../src/services/playerDirectory.js';
+import { updatePlayerDirectory, queryDirectory } from '../../src/services/playerDirectory.js';
 
 vi.mock('node:fs/promises');
 
@@ -72,5 +72,37 @@ describe('playerDirectory', () => {
     }));
     const list = await updatePlayerDirectory({ dataRoot: '/data', dockerService: mockDocker(''), edition: 'bedrock' });
     expect(list).toEqual([expect.objectContaining({ xuid: '999', name: 'OldPlayer' })]);
+  });
+});
+
+describe('queryDirectory', () => {
+  beforeEach(() => {
+    // 30 players named Player00..Player29, keyed by xuid.
+    const dir = {};
+    for (let i = 0; i < 30; i++) {
+      const n = String(i).padStart(2, '0');
+      dir[`x${n}`] = { xuid: `x${n}`, name: `Player${n}` };
+    }
+    vi.mocked(fsp.readFile).mockResolvedValue(JSON.stringify(dir));
+  });
+
+  it('returns the requested page with total', async () => {
+    const r = await queryDirectory('/data', { page: 2, pageSize: 25 });
+    expect(r.total).toBe(30);
+    expect(r.page).toBe(2);
+    expect(r.items).toHaveLength(5);
+    expect(r.items[0].name).toBe('Player25');
+  });
+
+  it('filters by name (case-insensitive) and paginates the filtered set', async () => {
+    const r = await queryDirectory('/data', { q: 'player0', pageSize: 100 });
+    expect(r.total).toBe(10); // Player00..Player09
+    expect(r.items.every((e) => e.name.startsWith('Player0'))).toBe(true);
+  });
+
+  it('clamps an out-of-range page to the last page', async () => {
+    const r = await queryDirectory('/data', { page: 99, pageSize: 25 });
+    expect(r.page).toBe(2);
+    expect(r.items).toHaveLength(5);
   });
 });

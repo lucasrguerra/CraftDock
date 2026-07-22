@@ -1,5 +1,7 @@
 import { api } from '../socket.js';
 
+const PAGE_SIZE = 25;
+
 export function renderPlayers(root) {
   root.innerHTML = `
     <div class="space-y-6 max-w-4xl w-full mx-auto">
@@ -18,8 +20,8 @@ export function renderPlayers(root) {
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-        
-        <!-- Online Players Card -->
+
+        <!-- Directory Card -->
         <div class="bg-slate-900/40 border border-slate-800/80 p-6 rounded-2xl backdrop-blur-md">
           <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-800/60">
             <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2">
@@ -34,18 +36,19 @@ export function renderPlayers(root) {
             <input id="player-search" type="text" placeholder="Filtrar por nome..." class="w-full pl-9 pr-3 py-2 text-sm rounded-xl bg-slate-950/80 border border-slate-800 text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all duration-200" />
           </div>
 
-          <ul id="online" class="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+          <ul id="directory" class="space-y-2 min-h-[20vh] max-h-[50vh] overflow-y-auto pr-1">
             <li class="text-slate-400 text-sm italic py-4 text-center">Carregando...</li>
           </ul>
+
+          <div id="pagination" class="flex items-center justify-between mt-4 pt-3 border-t border-slate-800/60 text-xs text-slate-400"></div>
         </div>
-        
+
         <!-- Management Panel -->
         <div class="bg-slate-900/40 border border-slate-800/80 p-6 rounded-2xl backdrop-blur-md">
           <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2 mb-4 pb-3 border-b border-slate-800/60">
             <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
             Gerenciamento
           </h2>
-          
           <div id="mgmt" class="space-y-4">
             <p class="text-slate-400 text-sm italic py-4 text-center">Carregando permissões...</p>
           </div>
@@ -62,17 +65,20 @@ export function renderPlayers(root) {
           </h2>
           <span id="whitelist-count" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700/50 text-slate-400">0</span>
         </div>
-        <div id="whitelist-list" class="flex flex-wrap gap-2">
-        </div>
+        <div id="whitelist-list" class="flex flex-wrap gap-2"></div>
       </div>
 
+      <!-- Detail modal root -->
+      <div id="detail-modal"></div>
     </div>`;
 
   let capabilities = new Set();
   let currentWhitelistEnabled = false;
-  let lastData = null;
+  let page = 1;
+  let query = '';
 
   const action = (act, body) => api(`/api/players/${act}`, { method: 'POST', body }).then(refresh);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   function mgmtForm(act, label, placeholder = 'Nome do jogador') {
     if (!capabilities.has(act)) return '';
@@ -90,7 +96,6 @@ export function renderPlayers(root) {
     const badge = root.querySelector('#allowlist-badge');
     const toggle = root.querySelector('#allowlist-toggle');
     const knob = root.querySelector('#allowlist-knob');
-
     if (enabled) {
       badge.textContent = 'ON';
       badge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 transition-all duration-300';
@@ -104,133 +109,189 @@ export function renderPlayers(root) {
     }
   }
 
-  // Builds the player list from online players + the persisted XUID directory,
-  // filtered by the search box. Called on every refresh and on each keystroke.
-  function renderPlayerList() {
-    if (!lastData) return;
-    const online = root.querySelector('#online');
-    const countEl = root.querySelector('#player-count');
-    if (!online) return;
+  // --- Directory (server-side paginated) ---
+  async function loadDirectory() {
+    const data = await api(`/api/players/directory?page=${page}&pageSize=${PAGE_SIZE}&q=${encodeURIComponent(query)}`);
+    if (!data) return;
+    const list = root.querySelector('#directory');
+    const items = data.items || [];
 
-    const onlineNames = lastData.players.players || [];
-    const directory = lastData.players.directory || [];
-    const byName = new Map(directory.map((e) => [e.name, e]));
-
-    // Union of currently-online names and everyone in the directory. XUID is the
-    // canonical identity; online players are matched to their XUID by name.
-    const names = new Set([...onlineNames, ...directory.map((e) => e.name)]);
-    let entries = [...names].map((name) => ({
-      name,
-      xuid: byName.get(name)?.xuid || null,
-      isOnline: onlineNames.includes(name),
-    }));
-
-    const q = (root.querySelector('#player-search')?.value || '').trim().toLowerCase();
-    if (q) entries = entries.filter((e) => e.name.toLowerCase().includes(q));
-
-    entries.sort((a, b) => {
-      if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-
-    countEl.textContent = `${onlineNames.length}/${lastData.players.max || 20} online`;
-
-    online.innerHTML = entries.length
-      ? entries.map((e) => {
-          const initials = e.name.substring(0, 2).toUpperCase();
-          const xuidTag = e.xuid
-            ? `<span class="text-[10px] text-slate-500 font-mono" title="XUID">${e.xuid}</span>`
+    list.innerHTML = items.length
+      ? items.map((e) => {
+          const initials = esc(e.name.substring(0, 2).toUpperCase());
+          const canInspect = !!e.xuid;
+          const dot = e.online
+            ? `<span class="absolute -top-1 -right-1 flex h-2.5 w-2.5"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span></span>`
             : '';
-          if (e.isOnline) {
-            return `
-              <li class="flex items-center justify-between bg-slate-950/40 border border-slate-800 p-3 rounded-xl hover:border-slate-700 transition-all duration-200">
-                <div class="flex items-center gap-3">
-                  <div class="relative h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-xs select-none">
-                    ${initials}
-                    <span class="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                    </span>
-                  </div>
-                  <div class="flex flex-col">
-                    <span class="font-medium text-slate-200 text-sm">${e.name}</span>
-                    <span class="text-[10px] text-emerald-400 font-semibold">Online${e.xuid ? ' · ' : ''}${e.xuid ? `<span class="text-slate-500 font-mono font-normal">${e.xuid}</span>` : ''}</span>
-                  </div>
-                </div>
-                <div class="flex gap-1.5">
-                  <button data-tp="${e.name}" class="text-xs px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600 border border-blue-500/20 hover:border-blue-500 text-blue-400 hover:text-slate-950 rounded-lg font-medium transition-all duration-250 active:scale-[0.96]">
-                    Teleportar
-                  </button>
-                  <button data-kick="${e.name}" class="text-xs px-3 py-1.5 bg-red-600/10 hover:bg-red-650 border border-red-500/20 hover:border-red-600 text-red-400 hover:text-white rounded-lg font-medium transition-all duration-250 active:scale-[0.96]">
-                    Expulsar
-                  </button>
-                </div>
-              </li>`;
-          }
+          const avatar = e.online ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800/40 text-slate-500';
+          const nameCls = e.online ? 'text-slate-200' : 'text-slate-400';
+          const statusLine = `${e.online ? '<span class="text-emerald-400 font-semibold">Online</span>' : '<span class="text-slate-500">Offline</span>'}${e.xuid ? ` · <span class="text-slate-500 font-mono">${esc(e.xuid)}</span>` : ''}`;
+          const inspectBtn = canInspect
+            ? `<button data-detail="${esc(e.xuid)}" data-name="${esc(e.name)}" class="text-xs px-3 py-1.5 bg-slate-700/40 hover:bg-slate-600 border border-slate-600/40 hover:border-slate-500 text-slate-200 rounded-lg font-medium transition-all duration-200 active:scale-[0.96]">Detalhes</button>`
+            : '';
+          const onlineBtns = e.online
+            ? `<button data-tp="${esc(e.name)}" class="text-xs px-3 py-1.5 bg-blue-600/10 hover:bg-blue-600 border border-blue-500/20 hover:border-blue-500 text-blue-400 hover:text-slate-950 rounded-lg font-medium transition-all duration-200 active:scale-[0.96]">Teleportar</button>
+               <button data-kick="${esc(e.name)}" class="text-xs px-3 py-1.5 bg-red-600/10 hover:bg-red-600 border border-red-500/20 hover:border-red-600 text-red-400 hover:text-white rounded-lg font-medium transition-all duration-200 active:scale-[0.96]">Expulsar</button>`
+            : '';
           return `
-              <li class="flex items-center justify-between bg-slate-950/20 border border-slate-900/60 p-3 rounded-xl opacity-60">
-                <div class="flex items-center gap-3">
-                  <div class="h-8 w-8 rounded-lg bg-slate-800/40 text-slate-500 flex items-center justify-center font-bold text-xs select-none">
-                    ${initials}
-                  </div>
-                  <div class="flex flex-col">
-                    <span class="font-medium text-slate-400 text-sm">${e.name}</span>
-                    <span class="text-[10px] text-slate-500">Offline${e.xuid ? ' · ' : ''}${xuidTag}</span>
-                  </div>
+            <li class="flex items-center justify-between gap-2 bg-slate-950/40 border border-slate-800 p-3 rounded-xl hover:border-slate-700 transition-all duration-200 ${e.online ? '' : 'opacity-80'}">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="relative h-8 w-8 rounded-lg ${avatar} flex items-center justify-center font-bold text-xs select-none shrink-0">${initials}${dot}</div>
+                <div class="flex flex-col min-w-0">
+                  <span class="font-medium ${nameCls} text-sm truncate">${esc(e.name)}</span>
+                  <span class="text-[10px] truncate">${statusLine}</span>
                 </div>
-                <div class="flex gap-1.5"></div>
-              </li>`;
+              </div>
+              <div class="flex gap-1.5 shrink-0">${inspectBtn}${onlineBtns}</div>
+            </li>`;
         }).join('')
-      : `
-          <div class="flex flex-col items-center justify-center py-8 text-slate-500">
-            <svg class="w-8 h-8 opacity-40 mb-2" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z"></path></svg>
-            <span class="text-xs">${q ? 'Nenhum jogador corresponde ao filtro' : 'Nenhum jogador encontrado'}</span>
-          </div>`;
+      : `<div class="flex flex-col items-center justify-center py-8 text-slate-500">
+           <svg class="w-8 h-8 opacity-40 mb-2" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+           <span class="text-xs">${query ? 'Nenhum jogador corresponde ao filtro' : 'Nenhum jogador encontrado'}</span>
+         </div>`;
 
-    online.querySelectorAll('[data-kick]').forEach((b) => {
-      b.onclick = () => action('kick', { name: b.dataset.kick });
+    // Pagination controls
+    const totalPages = Math.max(1, Math.ceil((data.total || 0) / PAGE_SIZE));
+    const pag = root.querySelector('#pagination');
+    pag.innerHTML = `
+      <button data-page="prev" class="px-3 py-1.5 rounded-lg border border-slate-700/60 ${data.page <= 1 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-800'}" ${data.page <= 1 ? 'disabled' : ''}>‹ Anterior</button>
+      <span>Página ${data.page} de ${totalPages} · ${data.total || 0} jogador${(data.total || 0) === 1 ? '' : 'es'}</span>
+      <button data-page="next" class="px-3 py-1.5 rounded-lg border border-slate-700/60 ${data.page >= totalPages ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-800'}" ${data.page >= totalPages ? 'disabled' : ''}>Próxima ›</button>`;
+
+    pag.querySelector('[data-page="prev"]').onclick = () => { if (page > 1) { page--; loadDirectory(); } };
+    pag.querySelector('[data-page="next"]').onclick = () => { if (page < totalPages) { page++; loadDirectory(); } };
+
+    list.querySelectorAll('[data-kick]').forEach((b) => { b.onclick = () => action('kick', { name: b.dataset.kick }); });
+    list.querySelectorAll('[data-tp]').forEach((b) => {
+      b.onclick = () => { const t = prompt('Teleportar para (jogador ou coordenadas x y z):'); if (t) action('teleport', { name: b.dataset.tp, target: t }); };
     });
-    online.querySelectorAll('[data-tp]').forEach((b) => {
-      b.onclick = () => {
-        const target = prompt('Teleportar para (jogador ou coordenadas x y z):');
-        if (target) action('teleport', { name: b.dataset.tp, target });
-      };
-    });
+    list.querySelectorAll('[data-detail]').forEach((b) => { b.onclick = () => openDetail(b.dataset.detail, b.dataset.name); });
   }
 
+  // --- Detail modal ---
+  let modalTimer = null;
+  function closeModal() {
+    if (modalTimer) { clearInterval(modalTimer); modalTimer = null; }
+    root.querySelector('#detail-modal').innerHTML = '';
+    document.removeEventListener('keydown', onEsc);
+  }
+  function onEsc(e) { if (e.key === 'Escape') closeModal(); }
+
+  function bar(label, value, max, colorClass) {
+    const pct = Math.max(0, Math.min(100, (value / max) * 100));
+    return `
+      <div>
+        <div class="flex justify-between text-[11px] text-slate-400 mb-1"><span>${label}</span><span>${value} / ${max}</span></div>
+        <div class="h-2.5 rounded-full bg-slate-800 overflow-hidden"><div class="h-full ${colorClass} rounded-full transition-all duration-300" style="width:${pct}%"></div></div>
+      </div>`;
+  }
+
+  function renderModalBody(d, name) {
+    if (d.needsBridge) {
+      return `<p class="text-sm text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">Abra este jogador uma vez enquanto ele está <b>online</b> para vincular os dados do save (o Bedrock não liga o nome ao arquivo até o primeiro acesso observado).</p>`;
+    }
+    if (d.empty || !d.position) {
+      return `<p class="text-sm text-slate-400 italic py-4">Sem dados salvos para este jogador ainda.</p>`;
+    }
+    const dimLabel = { overworld: 'Overworld', nether: 'Nether', end: 'End' }[d.dimension] || d.dimension;
+    const p = d.position;
+    const items = (d.inventory || []).filter((i) => i && i.name);
+    const invGrid = items.length
+      ? `<div class="grid grid-cols-4 sm:grid-cols-6 gap-1.5">${items.map((i) => {
+          const short = esc(i.name.replace(/^minecraft:/, '').replace(/_/g, ' '));
+          return `<div class="relative bg-slate-950/60 border border-slate-800 rounded-lg p-1.5 flex flex-col items-center justify-center aspect-square" title="${short} ×${i.count}">
+            <span class="text-[9px] text-slate-300 text-center leading-tight line-clamp-2">${short}</span>
+            <span class="absolute bottom-0.5 right-1 text-[10px] font-bold text-emerald-400">${i.count}</span>
+          </div>`;
+        }).join('')}</div>`
+      : `<p class="text-xs text-slate-500 italic">Inventário vazio.</p>`;
+
+    return `
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-slate-950/50 border border-slate-800 rounded-xl p-3">
+            <div class="text-[11px] text-slate-500 mb-1">Posição</div>
+            <div class="text-sm text-slate-200 font-mono">${Math.round(p.x)}, ${Math.round(p.y)}, ${Math.round(p.z)}</div>
+            <div class="text-[11px] text-slate-400 mt-1">${dimLabel}</div>
+          </div>
+          <div class="bg-slate-950/50 border border-slate-800 rounded-xl p-3 space-y-2 flex flex-col justify-center">
+            ${d.health ? bar('Vida', Math.round(d.health.current * 10) / 10, d.health.max, 'bg-red-500') : ''}
+            ${typeof d.food === 'number' ? bar('Fome', d.food, 20, 'bg-amber-500') : ''}
+          </div>
+        </div>
+        <div>
+          <div class="text-[11px] text-slate-500 mb-2">Inventário${d.xp ? ` · <span class="text-slate-400">Nível ${d.xp.level}</span>` : ''}${d.gamemode ? ` · <span class="text-slate-400 capitalize">${esc(d.gamemode)}</span>` : ''}</div>
+          ${invGrid}
+        </div>
+      </div>`;
+  }
+
+  async function openDetail(xuid, name) {
+    const host = root.querySelector('#detail-modal');
+    const shell = (body, footer = '') => `
+      <div data-backdrop class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div class="w-full max-w-lg bg-slate-900 border border-slate-700/70 rounded-2xl shadow-2xl overflow-hidden">
+          <div class="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="h-9 w-9 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-sm select-none">${esc(name.substring(0, 2).toUpperCase())}</div>
+              <div class="min-w-0">
+                <div class="font-bold text-slate-100 truncate">${esc(name)}</div>
+                <div class="text-[10px] text-slate-500 font-mono truncate">${esc(xuid)}</div>
+              </div>
+            </div>
+            <button data-close class="text-slate-500 hover:text-slate-200 transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+          </div>
+          <div class="p-5">${body}</div>
+          <div class="flex items-center justify-between px-5 py-3 border-t border-slate-800 bg-slate-950/40">${footer}</div>
+        </div>
+      </div>`;
+
+    host.innerHTML = shell('<p class="text-sm text-slate-400 italic py-6 text-center">Carregando dados do save...</p>');
+    document.addEventListener('keydown', onEsc);
+
+    const wire = () => {
+      host.querySelector('[data-close]').onclick = closeModal;
+      host.querySelector('[data-backdrop]').onclick = (ev) => { if (ev.target === ev.currentTarget) closeModal(); };
+      const rb = host.querySelector('[data-refresh]');
+      if (rb) rb.onclick = () => load();
+    };
+    wire();
+
+    async function load() {
+      const d = await api(`/api/players/detail?xuid=${encodeURIComponent(xuid)}`);
+      if (!d) { host.innerHTML = shell('<p class="text-sm text-red-400 py-4">Falha ao ler os dados do jogador.</p>', footerHtml('')); wire(); return; }
+      host.innerHTML = shell(renderModalBody(d, name), footerHtml(d));
+      wire();
+    }
+    function footerHtml(d) {
+      const online = d && d.online ? '<span class="text-[11px] text-emerald-400 font-semibold">● Online</span>' : '<span class="text-[11px] text-slate-500">Offline</span>';
+      const saved = d && d.savedAt ? `<span class="text-[11px] text-slate-500">atualizado às ${new Date(d.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>` : '<span></span>';
+      return `${online}${saved}<button data-refresh class="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700/60 text-slate-200 transition-all">Atualizar</button>`;
+    }
+    await load();
+  }
+
+  // --- Whitelist + management (from /api/players) ---
   async function refresh() {
     const data = await api('/api/players');
     if (!data) return;
     capabilities = new Set(data.capabilities);
-    
-    // --- Allowlist banner ---
+
     updateAllowlistBanner(data.whitelistEnabled);
-
     const toggleBtn = root.querySelector('#allowlist-toggle');
-    toggleBtn.onclick = () => {
-      const act = currentWhitelistEnabled ? 'whitelistOff' : 'whitelistOn';
-      action(act, {});
-    };
+    toggleBtn.onclick = () => action(currentWhitelistEnabled ? 'whitelistOff' : 'whitelistOn', {});
 
-    // --- Known players (online + XUID directory), filterable by name ---
-    lastData = data;
-    renderPlayerList();
+    root.querySelector('#player-count').textContent = `${data.players?.online || 0}/${data.players?.max || 20} online`;
 
-    // --- Management forms ---
+    // Management forms
     const mgmt = root.querySelector('#mgmt');
     let formsHtml = '';
-    
     if (capabilities.has('whitelistAdd')) formsHtml += mgmtForm('whitelistAdd', 'Whitelist +', 'Adicionar jogador à Whitelist');
     if (capabilities.has('whitelistRemove')) formsHtml += mgmtForm('whitelistRemove', 'Whitelist −', 'Remover jogador da Whitelist');
     if (capabilities.has('ban')) formsHtml += mgmtForm('ban', 'Banir', 'Nome do jogador para banir');
     if (capabilities.has('op')) formsHtml += mgmtForm('op', 'Tornar Op (Admin)', 'Nome do jogador');
-    
-    if (!formsHtml) {
-      formsHtml = `<p class="text-xs text-slate-500 italic py-2">Nenhum controle de privilégios suportado nesta edição do Minecraft.</p>`;
-    }
-    
+    if (!formsHtml) formsHtml = `<p class="text-xs text-slate-500 italic py-2">Nenhum controle de privilégios suportado nesta edição do Minecraft.</p>`;
     mgmt.innerHTML = formsHtml;
-
     root.querySelectorAll('#mgmt form').forEach((f) => {
       f.onsubmit = (e) => {
         e.preventDefault();
@@ -240,40 +301,35 @@ export function renderPlayers(root) {
       };
     });
 
-    // --- Whitelist members ---
+    // Whitelist members
     const whitelistCard = root.querySelector('#whitelist-card');
     const whitelistList = root.querySelector('#whitelist-list');
     const whitelistCount = root.querySelector('#whitelist-count');
     const whitelist = data.whitelist || [];
-
     if (whitelist.length > 0) {
       whitelistCard.classList.remove('hidden');
       whitelistCount.textContent = whitelist.length;
       whitelistList.innerHTML = whitelist.map((name) => `
         <div class="flex items-center gap-2 bg-slate-950/50 border border-slate-800/60 px-3 py-1.5 rounded-xl group hover:border-amber-500/30 transition-all duration-200">
-          <div class="h-6 w-6 rounded-md bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-[10px] select-none">
-            ${name.substring(0, 2).toUpperCase()}
-          </div>
-          <span class="text-sm text-slate-300 font-medium">${name}</span>
-          ${capabilities.has('whitelistRemove') ? `
-            <button data-wl-remove="${name}" class="ml-1 text-slate-600 hover:text-red-400 transition-colors duration-200 opacity-0 group-hover:opacity-100" title="Remover da Whitelist">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
-            </button>
-          ` : ''}
+          <div class="h-6 w-6 rounded-md bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-[10px] select-none">${esc(name.substring(0, 2).toUpperCase())}</div>
+          <span class="text-sm text-slate-300 font-medium">${esc(name)}</span>
+          ${capabilities.has('whitelistRemove') ? `<button data-wl-remove="${esc(name)}" class="ml-1 text-slate-600 hover:text-red-400 transition-colors duration-200 opacity-0 group-hover:opacity-100" title="Remover da Whitelist"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg></button>` : ''}
         </div>`).join('');
-
-      whitelistList.querySelectorAll('[data-wl-remove]').forEach((b) => {
-        b.onclick = () => action('whitelistRemove', { name: b.dataset.wlRemove });
-      });
+      whitelistList.querySelectorAll('[data-wl-remove]').forEach((b) => { b.onclick = () => action('whitelistRemove', { name: b.dataset.wlRemove }); });
     } else {
       whitelistCard.classList.add('hidden');
     }
   }
 
-  // Re-filter instantly on each keystroke, without waiting for the next refresh.
-  root.querySelector('#player-search').addEventListener('input', renderPlayerList);
+  // Search → server-side query, debounced, resets to page 1.
+  let searchTimer = null;
+  root.querySelector('#player-search').addEventListener('input', (e) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { query = e.target.value.trim(); page = 1; loadDirectory(); }, 300);
+  });
 
   refresh();
-  const timer = setInterval(refresh, 5000);
-  return () => clearInterval(timer);
+  loadDirectory();
+  const timer = setInterval(() => { refresh(); loadDirectory(); }, 5000);
+  return () => { clearInterval(timer); closeModal(); };
 }

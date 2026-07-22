@@ -46,11 +46,33 @@ describe('players routes', () => {
     expect(adapter.whitelistOn).toHaveBeenCalled();
   });
 
-  it('GET / returns players and capability list', async () => {
+  it('GET / returns players and capability list (no embedded directory)', async () => {
     const { app } = makeApp();
     const res = await request(app).get('/api/players');
     expect(res.body.capabilities).toContain('ban');
-    expect(res.body.players).toEqual({ online: 0, max: 20, players: [], directory: [] });
+    expect(res.body.players).toEqual({ online: 0, max: 20, players: [] });
+    expect(res.body.players.directory).toBeUndefined();
+  });
+
+  it('GET /directory returns a paginated shape with online annotation', async () => {
+    const { app } = makeApp();
+    const res = await request(app).get('/api/players/directory?page=1&pageSize=25');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ page: 1, pageSize: 25, total: expect.any(Number) });
+    expect(Array.isArray(res.body.items)).toBe(true);
+  });
+
+  it('GET /detail requires an xuid', async () => {
+    const { app } = makeApp();
+    const res = await request(app).get('/api/players/detail');
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'xuid_required' });
+  });
+
+  it('GET /detail returns 404 for an unknown player', async () => {
+    const { app } = makeApp();
+    const res = await request(app).get('/api/players/detail?xuid=doesnotexist');
+    expect(res.status).toBe(404);
   });
 
   it('GET / returns whitelistEnabled and whitelist', async () => {

@@ -37,7 +37,10 @@ services:
       retries: 3
       start_period: 10s
     networks: [craftdock-net]
-    restart: unless-stopped
+    # `always` (not `unless-stopped`): the panel must come back after ANY exit —
+    # a crash, its own healthcheck self-restart (kill PID 1), a manual stop, or a
+    # host/daemon reboot. It's the control plane, so it should never stay down.
+    restart: always
 
   minecraft-server:
     image: itzg/minecraft-server:latest
