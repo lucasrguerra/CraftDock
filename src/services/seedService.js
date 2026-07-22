@@ -17,6 +17,8 @@ export function parseBedrockSeed(buffer) {
 }
 
 export function createSeedService({ config, propertiesService, fs = fsp, logger } = {}) {
+  let cachedSeed = null;
+
   async function fromProperties() {
     try {
       const props = await propertiesService.read();
@@ -64,17 +66,28 @@ export function createSeedService({ config, propertiesService, fs = fsp, logger 
   // by the operator) always wins; otherwise Bedrock reads level.dat and Java asks
   // the server over RCON.
   async function resolve(adapter, edition) {
+    if (cachedSeed !== null) {
+      return cachedSeed;
+    }
     const fromProps = await fromProperties();
     if (fromProps) {
       logger?.debug('seed resolved from server.properties', { seed: fromProps });
+      cachedSeed = fromProps;
       return fromProps;
     }
     const seed = edition === 'bedrock'
       ? await fromBedrockLevelDat()
       : await fromJavaCommand(adapter);
     logger?.info('seed resolved', { edition, seed });
+    if (seed !== null) {
+      cachedSeed = seed;
+    }
     return seed;
   }
 
-  return { resolve, fromProperties, fromBedrockLevelDat, fromJavaCommand };
+  function clearCache() {
+    cachedSeed = null;
+  }
+
+  return { resolve, fromProperties, fromBedrockLevelDat, fromJavaCommand, clearCache };
 }

@@ -56,4 +56,47 @@ describe('JavaAdapter', () => {
     const pos = await adapter.getPlayerPosition('steve');
     expect(pos).toEqual({ x: 10.5, y: 64, z: -20.3, dimension: 'overworld' });
   });
+
+  it('whitelistOn maps to "whitelist on"', async () => {
+    const { rcon, adapter } = make();
+    await adapter.whitelistOn();
+    expect(rcon.send).toHaveBeenCalledWith('whitelist on');
+  });
+
+  it('whitelistOff maps to "whitelist off"', async () => {
+    const { rcon, adapter } = make();
+    await adapter.whitelistOff();
+    expect(rcon.send).toHaveBeenCalledWith('whitelist off');
+  });
+
+  it('whitelistList parses "whitelist list" output into array', async () => {
+    const { adapter } = make(async () => 'There are 3 whitelisted players: steve, alex, notch');
+    const list = await adapter.whitelistList();
+    expect(list).toEqual(['steve', 'alex', 'notch']);
+  });
+
+  it('whitelistList returns empty array when no players', async () => {
+    const { adapter } = make(async () => 'There are 0 whitelisted players:');
+    const list = await adapter.whitelistList();
+    expect(list).toEqual([]);
+  });
+
+  it('sendCommand sends command unmodified if no slash', async () => {
+    const { rcon, adapter } = make();
+    await adapter.sendCommand('gamerule showcoordinates true');
+    expect(rcon.send).toHaveBeenCalledWith('gamerule showcoordinates true');
+  });
+
+  it('sendCommand strips leading slash from command', async () => {
+    const { rcon, adapter } = make();
+    await adapter.sendCommand('/gamerule showcoordinates true');
+    expect(rcon.send).toHaveBeenCalledWith('gamerule showcoordinates true');
+  });
+
+  it('exposes whitelistOn/Off/List capabilities', () => {
+    const { adapter } = make();
+    expect(adapter.capabilities.has('whitelistOn')).toBe(true);
+    expect(adapter.capabilities.has('whitelistOff')).toBe(true);
+    expect(adapter.capabilities.has('whitelistList')).toBe(true);
+  });
 });

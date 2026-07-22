@@ -1,13 +1,16 @@
-import { parsePlayerList, CAPABILITIES, NotSupportedError } from './serverAdapter.js';
+import { parsePlayerList, parseWhitelistList, CAPABILITIES, NotSupportedError } from './serverAdapter.js';
 
 export function createBedrockAdapter(stdinService) {
   const send = (cmd) => stdinService.send(cmd);
   return {
     get capabilities() { return CAPABILITIES.BEDROCK; },
-    sendCommand: (raw) => send(raw),
+    sendCommand: (raw) => send(raw.startsWith('/') ? raw.slice(1) : raw),
     async listPlayers() { return parsePlayerList(await send('list')); },
     whitelistAdd: (n) => send(`allowlist add ${n}`),
     whitelistRemove: (n) => send(`allowlist remove ${n}`),
+    whitelistOn: () => send('allowlist on'),
+    whitelistOff: () => send('allowlist off'),
+    async whitelistList() { return parseWhitelistList(await send('allowlist list')); },
     async ban() { throw new NotSupportedError('ban'); },
     async pardon() { throw new NotSupportedError('pardon'); },
     op: (n) => send(`op ${n}`),
@@ -20,10 +23,18 @@ export function createBedrockAdapter(stdinService) {
     // from worlds/<level-name>/level.dat by seedService — do NOT add getSeed here.
     async getPlayerPosition(n) {
       try {
-        try {
-          const resQuery = await send(`querytarget @a[name="${n}"]`);
-          if (resQuery && resQuery.trim().startsWith('[')) {
-            const data = JSON.parse(resQuery.trim());
+        const resQuery = await send(`querytarget @a[name="${n}"]`);
+        if (resQuery) {
+          let cleanQuery = resQuery.replace(/§[0-9a-fk-or]/ig, '').trim();
+          cleanQuery = cleanQuery.replace(/^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}:\d{3}\s+\w+\]\s*/gm, '');
+          if (cleanQuery.includes('Target data:')) {
+            cleanQuery = cleanQuery.substring(cleanQuery.indexOf('Target data:') + 'Target data:'.length);
+          }
+          const startIdx = cleanQuery.indexOf('[');
+          const endIdx = cleanQuery.lastIndexOf(']');
+          if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+            const jsonStr = cleanQuery.substring(startIdx, endIdx + 1);
+            const data = JSON.parse(jsonStr);
             if (data && data[0]) {
               const p = data[0].position;
               const dimCode = data[0].dimension;
@@ -33,18 +44,8 @@ export function createBedrockAdapter(stdinService) {
               return { x: p.x, y: p.y, z: p.z, dimension };
             }
           }
-        } catch { /* fallback to tp */ }
-
-        const res = await send(`tp ${n} ~ ~ ~`);
-        const clean = res.replace(/§[0-9a-fk-or]/ig, '');
-        const m = clean.match(/to\s+(-?\d+(?:\.\d+)?)(?:,\s*|\s+)(-?\d+(?:\.\d+)?)(?:,\s*|\s+)(-?\d+(?:\.\d+)?)/i);
-        if (!m) return null;
-        return {
-          x: parseFloat(m[1]),
-          y: parseFloat(m[2]),
-          z: parseFloat(m[3]),
-          dimension: 'overworld'
-        };
+        }
+        return null;
       } catch {
         return null;
       }

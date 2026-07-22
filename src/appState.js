@@ -18,6 +18,57 @@ export function createAppState({ config, dockerService, rconService, stdinServic
   function build(type) {
     const adapter = createAdapter(type, { rconService, stdinService });
     adapter._edition = isBedrock(type) ? 'bedrock' : 'java';
+
+    let listPlayersCache = null;
+    let listPlayersTime = 0;
+    let whitelistCache = null;
+    let whitelistTime = 0;
+
+    const originalListPlayers = adapter.listPlayers;
+    adapter.listPlayers = async function() {
+      const now = Date.now();
+      if (listPlayersCache && (now - listPlayersTime < 10000)) {
+        return listPlayersCache;
+      }
+      listPlayersCache = await originalListPlayers.call(adapter);
+      listPlayersTime = now;
+      return listPlayersCache;
+    };
+
+    const originalWhitelistList = adapter.whitelistList;
+    adapter.whitelistList = async function() {
+      const now = Date.now();
+      if (whitelistCache && (now - whitelistTime < 30000)) {
+        return whitelistCache;
+      }
+      whitelistCache = await originalWhitelistList.call(adapter);
+      whitelistTime = now;
+      return whitelistCache;
+    };
+
+    adapter.clearCaches = () => {
+      listPlayersCache = null;
+      listPlayersTime = 0;
+      whitelistCache = null;
+      whitelistTime = 0;
+    };
+
+    const wrapClear = (methodName) => {
+      if (typeof adapter[methodName] === 'function') {
+        const original = adapter[methodName];
+        adapter[methodName] = async function(...args) {
+          const res = await original.apply(adapter, args);
+          adapter.clearCaches();
+          return res;
+        };
+      }
+    };
+
+    wrapClear('whitelistAdd');
+    wrapClear('whitelistRemove');
+    wrapClear('whitelistOn');
+    wrapClear('whitelistOff');
+
     return adapter;
   }
 

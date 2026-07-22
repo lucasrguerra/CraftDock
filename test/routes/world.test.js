@@ -27,11 +27,11 @@ function makeApp(worldOverrides = {}) {
 }
 
 describe('world routes', () => {
-  it('POST /regen delegates', async () => {
+  it('POST /regen delegates with seed', async () => {
     const { app, worldService } = makeApp();
-    const res = await request(app).post('/api/world/regen');
+    const res = await request(app).post('/api/world/regen').send({ seed: '99988' });
     expect(res.body).toEqual({ ok: true });
-    expect(worldService.regen).toHaveBeenCalled();
+    expect(worldService.regen).toHaveBeenCalledWith('99988');
   });
 
   it('GET /download streams a zip', async () => {

@@ -1,6 +1,11 @@
-export async function buildStatusPayload({ dockerService, appState, seedService, logger }) {
+import { updatePlayerDirectory } from '../services/playerDirectory.js';
+
+export async function buildStatusPayload({ dockerService, appState, seedService, logger, config }) {
   const info = await dockerService.inspect();
   if (info.state !== 'running') {
+    if (seedService?.clearCache) {
+      seedService.clearCache();
+    }
     return {
       state: info.state, type: info.type,
       cpuPct: 0, memUsedMb: 0, memPct: 0,
@@ -19,19 +24,12 @@ export async function buildStatusPayload({ dockerService, appState, seedService,
     type = edition === 'bedrock' ? 'BEDROCK' : 'JAVA';
 
     players = await adapter.listPlayers();
-    if (players?.players?.length && adapter.getPlayerPosition) {
-      const positions = {};
-      for (const name of players.players) {
-        try {
-          const pos = await adapter.getPlayerPosition(name);
-          if (pos) positions[name] = pos;
-        } catch (err) {
-          logger?.debug('position lookup failed', { player: name, error: err.message });
-        }
-      }
-      players.positions = positions;
+    if (config) {
+      // XUID-keyed directory of everyone who really accessed the world. Persisted
+      // at the data root, so `mcDataPath` (not the world subfolder) is the root.
+      const directory = await updatePlayerDirectory({ dataRoot: config.mcDataPath, dockerService, edition });
+      players = { ...players, directory };
     }
-
     seed = await seedService.resolve(adapter, edition);
   } catch (err) {
     logger?.warn('status payload: command channel not ready', { error: err.message });
@@ -39,12 +37,12 @@ export async function buildStatusPayload({ dockerService, appState, seedService,
   return { state: info.state, type, ...stats, players, seed };
 }
 
-export function registerStatusSocket(namespace, { dockerService, appState, seedService, logger, intervalMs = 2000 }) {
+export function registerStatusSocket(namespace, { dockerService, appState, seedService, logger, config, intervalMs = 2000 }) {
   namespace.on('connection', (socket) => {
     logger?.debug('status socket connected', { id: socket.id });
     const push = async () => {
       try {
-        socket.emit('status', await buildStatusPayload({ dockerService, appState, seedService, logger }));
+        socket.emit('status', await buildStatusPayload({ dockerService, appState, seedService, logger, config }));
       } catch (err) {
         logger?.error('status push failed', err);
         socket.emit('status', { state: 'error', error: err.message });

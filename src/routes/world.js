@@ -4,15 +4,18 @@ export function createWorldRouter({ worldService, upload }) {
   const router = Router();
 
   router.post('/regen', async (req, res, next) => {
-    try { res.json(await worldService.regen()); } catch (err) { next(err); }
+    const { seed } = req.body || {};
+    try { res.json(await worldService.regen(seed)); } catch (err) { next(err); }
   });
 
-  router.get('/download', (req, res) => {
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', 'attachment; filename="world.zip"');
-    const archive = worldService.createDownloadStream();
-    archive.on('error', () => res.destroy());
-    archive.pipe(res);
+  router.get('/download', async (req, res, next) => {
+    try {
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename="world.zip"');
+      const archive = await worldService.createDownloadStream();
+      archive.on('error', () => res.destroy());
+      archive.pipe(res);
+    } catch (err) { next(err); }
   });
 
   router.post('/upload', upload.single('world'), async (req, res) => {

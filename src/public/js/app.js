@@ -4,7 +4,6 @@ import { renderConsole } from './tabs/console.js';
 import { renderPlayers } from './tabs/players.js';
 import { renderOptions } from './tabs/options.js';
 import { renderWorld } from './tabs/world.js';
-import { renderMap } from './tabs/map.js';
 
 const TABS = [
   { id: 'status', label: 'Início', render: renderStatus },
@@ -12,7 +11,6 @@ const TABS = [
   { id: 'players', label: 'Jogadores', render: renderPlayers },
   { id: 'options', label: 'Opções', render: renderOptions },
   { id: 'world', label: 'Mundo', render: renderWorld },
-  { id: 'map', label: 'Mapa', render: renderMap },
 ];
 
 let cleanup = null;

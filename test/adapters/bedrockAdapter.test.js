@@ -29,7 +29,7 @@ describe('BedrockAdapter', () => {
     expect(adapter.getSeed).toBeUndefined();
   });
 
-  it('getPlayerPosition parses querytarget response', async () => {
+  it('getPlayerPosition parses querytarget response when it is clean JSON', async () => {
     const { adapter } = make(async (cmd) => {
       if (cmd.startsWith('querytarget')) {
         return '[{"position":{"x":15.0,"y":70.0,"z":-30.0},"dimension":1}]';
@@ -40,17 +40,78 @@ describe('BedrockAdapter', () => {
     expect(pos).toEqual({ x: 15, y: 70, z: -30, dimension: 'nether' });
   });
 
-  it('getPlayerPosition falls back to tp when querytarget fails', async () => {
+  it('getPlayerPosition parses querytarget response when it has a log/text prefix', async () => {
     const { adapter } = make(async (cmd) => {
       if (cmd.startsWith('querytarget')) {
-        return 'Unknown command or failure';
-      }
-      if (cmd.startsWith('tp')) {
-        return 'Teleported alex to 12.5, 64, -25.5';
+        return '[2026-07-18 23:08:38:396 INFO] Target data: [\n' +
+               '  {\n' +
+               '     "dimension" : 0,\n' +
+               '     "position" : {\n' +
+               '        "x" : 12.5,\n' +
+               '        "y" : 64.0,\n' +
+               '        "z" : -25.5\n' +
+               '     }\n' +
+               '  }\n' +
+               ']';
       }
       return '';
     });
     const pos = await adapter.getPlayerPosition('alex');
     expect(pos).toEqual({ x: 12.5, y: 64, z: -25.5, dimension: 'overworld' });
+  });
+
+  it('getPlayerPosition returns null when querytarget fails, and does not fall back to tp', async () => {
+    const { stdin, adapter } = make(async (cmd) => {
+      if (cmd.startsWith('querytarget')) {
+        return 'Unknown command or failure';
+      }
+      return 'Teleported alex to 12.5, 64, -25.5';
+    });
+    const pos = await adapter.getPlayerPosition('alex');
+    expect(pos).toBeNull();
+    expect(stdin.send).not.toHaveBeenCalledWith(expect.stringContaining('tp '));
+  });
+
+  it('whitelistOn maps to "allowlist on"', async () => {
+    const { stdin, adapter } = make();
+    await adapter.whitelistOn();
+    expect(stdin.send).toHaveBeenCalledWith('allowlist on');
+  });
+
+  it('whitelistOff maps to "allowlist off"', async () => {
+    const { stdin, adapter } = make();
+    await adapter.whitelistOff();
+    expect(stdin.send).toHaveBeenCalledWith('allowlist off');
+  });
+
+  it('whitelistList parses "allowlist list" output into array', async () => {
+    const { adapter } = make(async () => 'There are 2 allowlisted players: steve, alex');
+    const list = await adapter.whitelistList();
+    expect(list).toEqual(['steve', 'alex']);
+  });
+
+  it('whitelistList returns empty array when no players', async () => {
+    const { adapter } = make(async () => 'There are 0 allowlisted players:');
+    const list = await adapter.whitelistList();
+    expect(list).toEqual([]);
+  });
+
+  it('sendCommand sends command unmodified if no slash', async () => {
+    const { stdin, adapter } = make();
+    await adapter.sendCommand('gamerule showcoordinates true');
+    expect(stdin.send).toHaveBeenCalledWith('gamerule showcoordinates true');
+  });
+
+  it('sendCommand strips leading slash from command', async () => {
+    const { stdin, adapter } = make();
+    await adapter.sendCommand('/gamerule showcoordinates true');
+    expect(stdin.send).toHaveBeenCalledWith('gamerule showcoordinates true');
+  });
+
+  it('exposes whitelistOn/Off/List capabilities', () => {
+    const { adapter } = make();
+    expect(adapter.capabilities.has('whitelistOn')).toBe(true);
+    expect(adapter.capabilities.has('whitelistOff')).toBe(true);
+    expect(adapter.capabilities.has('whitelistList')).toBe(true);
   });
 });
