@@ -6,13 +6,9 @@ services:
   craftdock-panel:
     build: .
     container_name: craftdock-panel
-    # Behind a reverse proxy (Coolify/Traefik): keep `expose` and point the domain
-    # at port 3000. For local `docker compose` testing WITHOUT a proxy, uncomment
-    # `ports` below and set NODE_ENV=development in your .env.
-    expose:
-      - "3000"
-    # ports:
-    #   - "3000:3000"
+    ports:
+      - "${PORT:-8081}:8081"
+
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - mc-data:/minecraft/data

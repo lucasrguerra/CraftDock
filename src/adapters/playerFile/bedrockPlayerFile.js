@@ -74,14 +74,25 @@ export function createBedrockPlayerFile(config) {
   async function withDb(fn) {
     const dbPath = resolveDbPath(config);
     if (!dbPath) return null;
-    const db = new LevelDB(dbPath, { createIfMissing: false });
-    await db.open();
+    let db = null;
     try {
+      db = new LevelDB(dbPath, { createIfMissing: false });
+      let openTimer;
+      const openPromise = db.open();
+      const timeoutPromise = new Promise((_, reject) => {
+        openTimer = setTimeout(() => reject(new Error('LevelDB open timeout')), 2000);
+      });
+      await Promise.race([openPromise, timeoutPromise]).finally(() => clearTimeout(openTimer));
       return await fn(db);
+    } catch {
+      return null;
     } finally {
-      await db.close();
+      if (db) {
+        try { await db.close(); } catch {}
+      }
     }
   }
+
 
   async function readPlayer(uuid) {
     const data = await withDb(async (db) => {

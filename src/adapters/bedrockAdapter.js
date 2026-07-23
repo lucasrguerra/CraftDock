@@ -45,6 +45,13 @@ export function createBedrockAdapter(stdinService) {
       try {
         const res = await send(`querytarget @a[name="${n}"]`);
         if (!res) return null;
+
+        // Fast & resilient regex matching for uniqueId (integer or string)
+        const match = res.match(/"uniqueId"\s*:\s*(-?\d+|"[^"]+")/i);
+        if (match) {
+          return match[1].replace(/"/g, '');
+        }
+
         let clean = res.replace(/§[0-9a-fk-or]/ig, '').trim();
         clean = clean.replace(/^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}:\d{3}\s+\w+\]\s*/gm, '');
         if (clean.includes('Target data:')) {
@@ -58,6 +65,7 @@ export function createBedrockAdapter(stdinService) {
         return null;
       }
     },
+
     // NOTE: Bedrock has no `seed` console command (Java-only). The seed is read
     // from worlds/<level-name>/level.dat by seedService — do NOT add getSeed here.
     async getPlayerPosition(n) {

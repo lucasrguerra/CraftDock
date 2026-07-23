@@ -31,10 +31,11 @@ describe('stdinService', () => {
     const order = [];
     // Track write order to prove serialization
     const originalWrite = stream.write.bind(stream);
-    stream.write = (chunk) => {
-      order.push(chunk.toString().trim());
-      return originalWrite(chunk);
+    stream.write = (...args) => {
+      order.push(args[0].toString().trim());
+      return originalWrite(...args);
     };
+
 
     const dockerService = { attach: vi.fn().mockResolvedValue(stream) };
     const svc = createStdinService(dockerService, { windowMs: 15 });

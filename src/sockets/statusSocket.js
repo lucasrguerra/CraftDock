@@ -1,5 +1,6 @@
 import { updatePlayerDirectory } from '../services/playerDirectory.js';
 
+
 export async function buildStatusPayload({ dockerService, appState, seedService, logger, config }) {
   const info = await dockerService.inspect();
   if (info.state !== 'running') {
@@ -42,6 +43,8 @@ export async function buildStatusPayload({ dockerService, appState, seedService,
   }
   return { state: info.state, type, ...stats, players, seed };
 }
+
+
 
 export function registerStatusSocket(namespace, { dockerService, appState, seedService, logger, config, intervalMs = 2000 }) {
   namespace.on('connection', (socket) => {

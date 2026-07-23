@@ -9,16 +9,27 @@ const CATEGORIES = [
         key: 'difficulty',
         label: 'Dificuldade',
         type: 'enum',
-        values: ['Pacífico', 'Fácil', 'Normal', 'Difícil'],
+        values: [
+          { val: 'peaceful', label: 'Pacífico' },
+          { val: 'easy', label: 'Fácil' },
+          { val: 'normal', label: 'Normal' },
+          { val: 'hard', label: 'Difícil' },
+        ],
         description: 'Define o nível de dificuldade do jogo, controlando dano de monstros, fome e geração de mobs hostis.',
       },
       {
         key: 'gamemode',
         label: 'Modo de Jogo Padrão',
         type: 'enum',
-        values: ['Sobrevivência', 'Criativo', 'Aventura', 'Espectador'],
+        values: [
+          { val: 'survival', label: 'Sobrevivência' },
+          { val: 'creative', label: 'Criativo' },
+          { val: 'adventure', label: 'Aventura' },
+          { val: 'spectator', label: 'Espectador' },
+        ],
         description: 'Determina o modo de jogo atribuído aos novos jogadores que se conectarem ao mundo.',
       },
+
       {
         key: 'pvp',
         label: 'Habilitar PvP (Combate)',
@@ -170,14 +181,20 @@ export function renderOptions(root) {
     const labelHtml = renderLabelWithTooltip(f);
 
     if (f.type === 'enum') {
+      const optionsHtml = f.values.map((v) => {
+        const val = typeof v === 'object' ? v.val : v;
+        const lbl = typeof v === 'object' ? v.label : v;
+        return `<option value="${val}" ${val === value ? 'selected' : ''}>${lbl}</option>`;
+      }).join('');
       return `
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2.5 border-b border-slate-800/30 last:border-0">
           ${labelHtml}
           <select name="${f.key}" class="w-full sm:w-56 px-3 py-2 text-sm rounded-xl bg-slate-950/80 border border-slate-800 text-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all duration-200">
-            ${f.values.map((v) => `<option value="${v}" ${v === value ? 'selected' : ''}>${v}</option>`).join('')}
+            ${optionsHtml}
           </select>
         </div>`;
     }
+
     
     if (f.type === 'boolean') {
       const isChecked = value === 'true';

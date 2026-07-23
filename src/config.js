@@ -39,7 +39,7 @@ export function loadConfig(env = process.env) {
     rconPort: num(env.RCON_PORT, 25575),
     rconPassword: env.RCON_PASSWORD || '',
     mapVersion: env.MAP_VERSION || '',
-    port: num(env.PORT, 3000),
+    port: num(env.PORT, 8081),
     nodeEnv: env.NODE_ENV || 'development',
     maxUploadBytes: num(env.MAX_UPLOAD_MB, 1024) * 1024 * 1024,
   };

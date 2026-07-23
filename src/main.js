@@ -47,7 +47,8 @@ for (const file of FILES_TO_CHMOD) {
 }
 const docker = new Docker(); // uses /var/run/docker.sock by default
 
-const dockerService = createDockerService(config, docker);
+const dockerService = createDockerService(config, docker, logger.child('docker'));
+
 const rconService = createRconService(config, undefined, logger.child('rcon'));
 const stdinService = createStdinService(dockerService, { logger: logger.child('stdin') });
 const propertiesService = createPropertiesService(config);
@@ -69,7 +70,20 @@ const upload = multer({
   limits: { fileSize: config.maxUploadBytes },
 });
 
+logger.info('=== CraftDock Container Started ===', {
+  nodeEnv: config.nodeEnv,
+  port: config.port,
+  logLevel: process.env.LOG_LEVEL || 'info',
+  logFormat: process.env.LOG_FORMAT || 'text',
+  mcContainerName: config.mcContainerName,
+  mcServiceName: config.mcServiceName,
+  mcDataPath: config.mcDataPath,
+  mcEdition: config.mcEdition,
+  mcWorldName: config.mcWorldName,
+});
+
 startServer({
   config, dockerService, appState, propertiesService,
   worldService, authService, upload, seedService, logger,
 });
+

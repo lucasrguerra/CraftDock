@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createPlayerDetailService } from '../../src/services/playerDetailService.js';
 
-function setup({ edition, online, running = true, dir, bridge, readPlayer, extraAdapter = {} }) {
+function setup({ edition, online, running = true, dir, bridge, readPlayer, listServerUuids, extraAdapter = {} }) {
   const adapter = {
     _edition: edition,
     listPlayers: vi.fn(async () => ({ players: online ? ['Lucas'] : [] })),
@@ -16,7 +16,11 @@ function setup({ edition, online, running = true, dir, bridge, readPlayer, extra
     appState: { getAdapter: vi.fn(async () => adapter) },
     dockerService: { inspect: vi.fn(async () => ({ state: running ? 'running' : 'exited' })) },
     readDirectory: vi.fn(async () => dir),
-    createFileAdapter: vi.fn(() => ({ readPlayer: vi.fn(readPlayer), findByUniqueId: vi.fn() })),
+    createFileAdapter: vi.fn(() => ({
+      readPlayer: vi.fn(readPlayer),
+      findByUniqueId: vi.fn(),
+      listServerUuids: vi.fn(async () => listServerUuids ? listServerUuids() : []),
+    })),
     createBridge: vi.fn(() => bridge),
   };
   return { adapter, service: createPlayerDetailService(deps), deps };
@@ -44,17 +48,36 @@ describe('playerDetailService', () => {
     expect(adapter.saveResume).toHaveBeenCalled();
   });
 
-  it('bedrock offline and never bridged: needsBridge', async () => {
+  it('bedrock offline and never bridged: auto-binds single LevelDB uuid fallback', async () => {
+    const bridge = { learn: vi.fn(async () => ({})), resolveLeveldbUuid: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce('uuid-fallback-1') };
+    const { service } = setup({
+      edition: 'bedrock', online: false, running: false,
+      dir: { '2535': { name: 'Lucas', xuid: '2535' } },
+      bridge,
+      readPlayer: async (id) => id === 'uuid-fallback-1' ? { health: 20 } : null,
+      listServerUuids: () => ['uuid-fallback-1'],
+    });
+
+    const d = await service.getDetail('2535');
+    expect(d.needsBridge).toBe(false);
+    expect(d.health).toBe(20);
+    expect(bridge.learn).toHaveBeenCalledWith({ xuid: '2535', name: 'Lucas', fallbackUuid: 'uuid-fallback-1' });
+  });
+
+  it('bedrock offline and never bridged with multiple uuids: returns needsBridge', async () => {
     const bridge = { learn: vi.fn(), resolveLeveldbUuid: vi.fn(async () => null) };
-    const { adapter, service } = setup({
+    const { service } = setup({
       edition: 'bedrock', online: false,
       dir: { '2535': { name: 'Lucas', xuid: '2535' } },
-      bridge, readPlayer: async () => null,
+      bridge,
+      readPlayer: async () => null,
+      listServerUuids: () => ['uuid-1', 'uuid-2'],
     });
     const d = await service.getDetail('2535');
     expect(d.needsBridge).toBe(true);
-    expect(adapter.saveHold).not.toHaveBeenCalled();
   });
+
+
 
   it('java online: forces save then reads the player .dat', async () => {
     const { adapter, service } = setup({

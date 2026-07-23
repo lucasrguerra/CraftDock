@@ -30,18 +30,28 @@ export function createBedrockIdentityBridge({ dataRoot, fileAdapter }) {
     } catch { /* best-effort */ }
   }
 
-  // Bind xuid → LevelDB uuid using the live uniqueId. Returns the binding, or
-  // null if the uniqueId matched no LevelDB player (nothing persisted).
-  async function learn({ xuid, name, uniqueId }) {
-    if (!xuid || uniqueId == null) return null;
-    const hit = await fileAdapter.findByUniqueId(String(uniqueId));
-    if (!hit) return null;
+  // Bind xuid → LevelDB uuid using the live uniqueId or fallbackUuid.
+  async function learn({ xuid, name, uniqueId, fallbackUuid }) {
+    if (!xuid) return null;
+    let targetUuid = fallbackUuid;
+    if (!targetUuid && uniqueId != null) {
+      const hit = await fileAdapter.findByUniqueId(String(uniqueId));
+      if (hit) targetUuid = hit.uuid;
+    }
+    if (!targetUuid) return null;
+
     const map = await readMap();
-    const binding = { name: name ?? map[xuid]?.name ?? null, leveldbUuid: hit.uuid, uniqueId: String(uniqueId), boundAt: new Date().toISOString() };
+    const binding = {
+      name: name ?? map[xuid]?.name ?? null,
+      leveldbUuid: targetUuid,
+      uniqueId: uniqueId ? String(uniqueId) : (map[xuid]?.uniqueId || null),
+      boundAt: new Date().toISOString(),
+    };
     map[xuid] = binding;
     await writeMap(map);
     return binding;
   }
+
 
   async function resolveLeveldbUuid(xuid) {
     const map = await readMap();

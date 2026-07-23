@@ -31,10 +31,13 @@ describe('bedrockIdentityBridge', () => {
     expect(store).toBeNull();
   });
 
-  it('learn returns null when uniqueId is missing (never queries)', async () => {
+  it('learn binds xuid to fallbackUuid when provided even without uniqueId', async () => {
     const fileAdapter = { findByUniqueId: vi.fn() };
     const bridge = createBedrockIdentityBridge({ dataRoot: '/data', fileAdapter });
-    expect(await bridge.learn({ xuid: 'x', name: 'n', uniqueId: null })).toBeNull();
+
+    const binding = await bridge.learn({ xuid: '2535407895138987', name: 'Lucasrguerra', fallbackUuid: 'fallback-uuid-123' });
+    expect(binding.leveldbUuid).toBe('fallback-uuid-123');
+    expect(await bridge.resolveLeveldbUuid('2535407895138987')).toBe('fallback-uuid-123');
     expect(fileAdapter.findByUniqueId).not.toHaveBeenCalled();
   });
 
@@ -43,3 +46,4 @@ describe('bedrockIdentityBridge', () => {
     expect(await bridge.resolveLeveldbUuid('nope')).toBeNull();
   });
 });
+

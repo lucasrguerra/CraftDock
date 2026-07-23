@@ -15,7 +15,19 @@ function parseType(env = []) {
 const SERVICE_LABEL = 'com.docker.compose.service';
 const PROJECT_LABEL = 'com.docker.compose.project';
 
-export function createDockerService(config, docker) {
+function withTimeout(promise, ms, label, logger) {
+  let timer;
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(`Docker API call timed out (${ms}ms): ${label}`);
+      logger?.error('docker API timeout', { label, timeoutMs: ms });
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+}
+
+export function createDockerService(config, docker, logger) {
   const name = config.mcContainerName;
   const serviceName = config.mcServiceName;
   let ownProjectCache;
@@ -23,23 +35,29 @@ export function createDockerService(config, docker) {
   let lastStatsTime = 0;
   let inFlightStatsPromise = null;
 
-
   // The panel's own compose project, read by self-inspecting the panel container
   // (its hostname is its container id). Used to scope the service-label fallback
   // so we never pick up a same-named service from another project.
   async function ownProject() {
     if (ownProjectCache !== undefined) return ownProjectCache;
     try {
-      const self = await docker.getContainer(os.hostname()).inspect();
+      const self = await withTimeout(docker.getContainer(os.hostname()).inspect(), 3000, 'selfInspect', logger);
       ownProjectCache = self.Config?.Labels?.[PROJECT_LABEL] || null;
-    } catch {
+    } catch (err) {
+      logger?.debug('ownProject inspect failed/skipped', { error: err.message });
       ownProjectCache = null;
     }
     return ownProjectCache;
   }
 
   async function resolve() {
-    const list = await docker.listContainers({ all: true });
+    let list;
+    try {
+      list = await withTimeout(docker.listContainers({ all: true }), 5000, 'listContainers', logger);
+    } catch (err) {
+      logger?.error('docker listContainers failed', { error: err.message });
+      throw err;
+    }
 
     // 1. Exact container name (works locally where container_name is honored).
     let match = list.find((c) => c.Names?.some((n) => n === `/${name}` || n === name));
@@ -58,8 +76,9 @@ export function createDockerService(config, docker) {
   }
 
   async function lifecycle(method) {
+    logger?.info(`docker container lifecycle: ${method}`, { name });
     const container = await resolve();
-    await container[method]();
+    await withTimeout(container[method](), 10000, `lifecycle:${method}`, logger);
   }
 
   async function inspect() {
@@ -70,15 +89,22 @@ export function createDockerService(config, docker) {
       if (err instanceof ContainerNotFoundError) {
         return { found: false, state: 'not_found', type: null };
       }
-      throw err;
+      logger?.warn('docker inspect container resolve error', { error: err.message });
+      return { found: false, state: 'error', type: null };
     }
-    const data = await container.inspect();
-    return {
-      found: true,
-      state: data.State?.Status || 'unknown',
-      type: parseType(data.Config?.Env),
-    };
+    try {
+      const data = await withTimeout(container.inspect(), 5000, 'inspect', logger);
+      return {
+        found: true,
+        state: data.State?.Status || 'unknown',
+        type: parseType(data.Config?.Env),
+      };
+    } catch (err) {
+      logger?.warn('docker container inspect error', { error: err.message });
+      return { found: true, state: 'unknown', type: null };
+    }
   }
+
 
   return {
     async getContainer() { return resolve(); },
