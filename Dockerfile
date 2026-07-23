@@ -27,6 +27,10 @@ RUN npm install --no-save --ignore-scripts minecraft-assets@${ASSETS_VERSION} \
 
 FROM node:20-bookworm-slim
 WORKDIR /app
+# Patch fixable OS CVEs in the base image at build time (trivy image scan).
+RUN apt-get update \
+ && apt-get upgrade -y \
+ && rm -rf /var/lib/apt/lists/*
 # The compiled node-leveldb.node links libz (zlib1g) and libstdc++6, both already
 # present in the slim base image — so no extra runtime packages are needed.
 COPY --from=builder /app/node_modules ./node_modules
@@ -36,4 +40,8 @@ COPY scripts ./scripts
 COPY --from=assets /app/src/public/assets/mc ./src/public/assets/mc
 ENV NODE_ENV=production
 EXPOSE 8081
+# Composes may override with their own healthcheck block; this is the built-in
+# default so the image is self-monitoring anywhere it runs (trivy DS-0026).
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
+  CMD ["node", "src/healthcheck.js"]
 CMD ["node", "src/main.js"]

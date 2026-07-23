@@ -38,17 +38,18 @@ describe('stdinService', () => {
 
 
     const dockerService = { attach: vi.fn().mockResolvedValue(stream) };
-    const svc = createStdinService(dockerService, { windowMs: 15 });
+    const svc = createStdinService(dockerService, { windowMs: 40 });
 
     // Fire 3 commands concurrently — they must NOT overlap
     const p1 = svc.send('cmd1');
     const p2 = svc.send('cmd2');
     const p3 = svc.send('cmd3');
 
-    // Simulate server responses with slight delays
-    setTimeout(() => stream.push('reply1\n'), 5);
-    setTimeout(() => stream.push('reply2\n'), 25);
-    setTimeout(() => stream.push('reply3\n'), 45);
+    // Simulate server responses aimed at the MIDDLE of each serialized capture
+    // window ([0,40) / [40,80) / [80,120)ms) so timer jitter can't flake this.
+    setTimeout(() => stream.push('reply1\n'), 15);
+    setTimeout(() => stream.push('reply2\n'), 55);
+    setTimeout(() => stream.push('reply3\n'), 95);
 
     const [r1, r2, r3] = await Promise.all([p1, p2, p3]);
 

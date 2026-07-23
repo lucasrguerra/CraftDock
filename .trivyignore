@@ -1,0 +1,9 @@
+# DS-0002: "Specify at least 1 USER command in Dockerfile with non-root user".
+# Accepted risk, deliberately: CraftDock's entire purpose is to control the
+# Minecraft container through /var/run/docker.sock (root-equivalent by design)
+# and to read/write world files the game server creates with mixed ownership.
+# Running as a non-root user would break the docker.sock connection on most
+# hosts (socket is root:docker with a host-specific GID) without reducing the
+# real attack surface — the socket mount, not the container user, is the power.
+# Access is gated by the panel's bcrypt-authenticated session on every route.
+DS-0002
