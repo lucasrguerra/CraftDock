@@ -39,7 +39,7 @@ COPY src ./src
 COPY scripts ./scripts
 COPY --from=assets /app/src/public/assets/mc ./src/public/assets/mc
 ENV NODE_ENV=production
-EXPOSE 8081
+EXPOSE 3000
 # Composes may override with their own healthcheck block; this is the built-in
 # default so the image is self-monitoring anywhere it runs (trivy DS-0026).
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \

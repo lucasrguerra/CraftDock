@@ -11,7 +11,7 @@ describe('loadConfig', () => {
     const c = loadConfig(base);
     expect(c.mcContainerName).toBe('craftdock-mc-server');
     expect(c.rconPort).toBe(25575);
-    expect(c.port).toBe(8081);
+    expect(c.port).toBe(3000);
     expect(c.mcEdition).toBe('auto');
     expect(c.maxUploadBytes).toBe(1024 * 1024 * 1024);
   });
@@ -51,6 +51,6 @@ describe('loadConfig', () => {
   it('falls back to defaults for empty string or non-numeric numeric env vars', () => {
     const c = loadConfig({ ...base, RCON_PORT: '', PORT: 'abc' });
     expect(c.rconPort).toBe(25575);
-    expect(c.port).toBe(8081);
+    expect(c.port).toBe(3000);
   });
 });
