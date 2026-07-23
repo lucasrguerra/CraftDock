@@ -9,7 +9,8 @@ async function check() {
     // us — the catch below never runs, the failure counter never advances, and the
     // self-restart (kill PID 1) never fires. A 4s AbortSignal guarantees the catch
     // runs first so the counter advances and the container can heal itself.
-    const res = await fetch('http://127.0.0.1:3000/api/health', {
+    const port = process.env.PORT || 3000;
+    const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
       signal: AbortSignal.timeout(4000),
     });
     if (res.ok) {

@@ -43,6 +43,9 @@ export function createPropertiesService(config, fs = fsp) {
     try { original = await fs.readFile(file, 'utf8'); } catch { original = ''; }
     const merged = { ...parse(original), ...patch };
     await fs.writeFile(file, serialize(merged, original), 'utf8');
+    if (typeof fs.chmod === 'function') {
+      await fs.chmod(file, 0o666).catch(() => {});
+    }
     return merged;
   }
 

@@ -6,9 +6,20 @@ export const PROPERTY_SCHEMA = {
   pvp: { type: 'boolean' },
   'allow-flight': { type: 'boolean' },
   hardcore: { type: 'boolean' },
+  'keep-inventory': { type: 'boolean' },
+  'allow-nether': { type: 'boolean' },
+  'enable-command-block': { type: 'boolean' },
+  'force-gamemode': { type: 'boolean' },
+  'spawn-monsters': { type: 'boolean' },
+  'spawn-animals': { type: 'boolean' },
+  'spawn-npcs': { type: 'boolean' },
   'max-players': { type: 'int' },
   'view-distance': { type: 'int' },
+  'simulation-distance': { type: 'int' },
+  'spawn-protection': { type: 'int' },
   motd: { type: 'string' },
+  'level-name': { type: 'string' },
+  'level-seed': { type: 'string' },
 };
 
 function validate(properties) {

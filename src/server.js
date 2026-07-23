@@ -19,15 +19,49 @@ export function createApp(deps) {
   const { config, dockerService, appState, propertiesService, worldService, authService, upload, seedService, logger } = deps;
   const app = express();
 
-  // Request logging (debug level).
+  // Comprehensive request logging (info level).
   if (logger) {
     app.use((req, res, next) => {
+      const start = Date.now();
+      const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+      const isHealth = req.originalUrl === '/api/health';
+      const logLevel = isHealth ? 'debug' : 'info';
+
+      logger[logLevel](`--> ${req.method} ${req.originalUrl}`, { ip, userAgent: req.headers['user-agent'] });
+
+      let logged = false;
+      const logFinish = (status, extra = {}) => {
+        if (logged) return;
+        logged = true;
+        const durationMs = Date.now() - start;
+        const finishLevel = isHealth ? 'debug' : (status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info');
+        logger[finishLevel](`<-- ${req.method} ${req.originalUrl} ${status} - ${durationMs}ms`, {
+          method: req.method,
+          url: req.originalUrl,
+          status,
+          durationMs,
+          ...extra,
+        });
+      };
+
       res.on('finish', () => {
-        logger.debug('http', { method: req.method, url: req.originalUrl, status: res.statusCode });
+        logFinish(res.statusCode);
       });
+
+      res.on('close', () => {
+        if (!res.writableEnded) {
+          logFinish(499, { aborted: true, note: 'Client/Gateway closed connection before response finished' });
+        }
+      });
+
       next();
     });
   }
+
+  // Fast, un-intercepted health check endpoint for container probes
+  app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+
+
 
   // Behind a TLS-terminating reverse proxy (e.g. Coolify/Traefik on 443), the
   // app receives plain http with X-Forwarded-Proto: https. Trusting the proxy
@@ -50,8 +84,8 @@ export function createApp(deps) {
   app.use(sessionMiddleware);
 
   // public
-  app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
   app.use('/api/auth', createAuthRouter(authService));
+
 
   // guarded
   app.use('/api', requireAuth);

@@ -53,7 +53,9 @@ export async function readDirectory(dataRoot) {
 
 async function writeDirectory(dataRoot, dir) {
   try {
-    await fsp.writeFile(filePath(dataRoot), JSON.stringify(dir, null, 2), 'utf8');
+    const file = filePath(dataRoot);
+    await fsp.writeFile(file, JSON.stringify(dir, null, 2), 'utf8');
+    await fsp.chmod(file, 0o666).catch(() => {});
   } catch { /* best-effort: a failed write just means we re-scan next tick */ }
 }
 
@@ -104,7 +106,10 @@ function mergeSpawn(dir, xuid, name, nowIso) {
   return renamed || hadLegacy;
 }
 
-async function scanSpawns(dockerService, sinceSec) {
+let lastDirectoryUpdateMs = 0;
+let cachedDirectoryList = null;
+
+async function scanSpawns(dockerService, sinceSec, logger) {
   const spawns = [];
   try {
     const container = await dockerService.getContainer();
@@ -118,7 +123,9 @@ async function scanSpawns(dockerService, sinceSec) {
       spawns.push({ name: m[1].trim(), xuid: m[2] });
     }
     SPAWN_RE.lastIndex = 0;
-  } catch { /* container gone / not ready — return what we have */ }
+  } catch (err) {
+    logger?.warn('player directory scanSpawns failed', { error: err?.message });
+  }
   return spawns;
 }
 
@@ -144,9 +151,14 @@ async function seedFromUsercache(dataRoot, dir, nowIso) {
  * Update and return the player directory as a flat, sorted list.
  * @returns {Promise<Array<{xuid: string|null, name: string, firstSeen: string|null, lastSeen: string|null}>>}
  */
-export async function updatePlayerDirectory({ dataRoot, dockerService, edition }) {
+export async function updatePlayerDirectory({ dataRoot, dockerService, edition, logger, minIntervalMs = 0 }) {
+  const now = Date.now();
+  if (minIntervalMs > 0 && cachedDirectoryList && (now - lastDirectoryUpdateMs < minIntervalMs)) {
+    return cachedDirectoryList;
+  }
+
   const dir = await readDirectory(dataRoot);
-  const nowIso = new Date().toISOString();
+  const nowIso = new Date(now).toISOString();
   let changed = await migrateLegacy(dataRoot, dir);
 
   if (edition === 'java') {
@@ -154,8 +166,8 @@ export async function updatePlayerDirectory({ dataRoot, dockerService, edition }
   } else if (dockerService) {
     // Capture the cursor BEFORE scanning so lines written during the scan aren't
     // lost on the next pass.
-    const nowSec = Math.floor(Date.now() / 1000);
-    const spawns = await scanSpawns(dockerService, lastScanSec || undefined);
+    const nowSec = Math.floor(now / 1000);
+    const spawns = await scanSpawns(dockerService, lastScanSec || undefined, logger);
     lastScanSec = nowSec;
     for (const s of spawns) {
       if (mergeSpawn(dir, s.xuid, s.name, nowIso)) changed = true;
@@ -163,8 +175,11 @@ export async function updatePlayerDirectory({ dataRoot, dockerService, edition }
   }
 
   if (changed) await writeDirectory(dataRoot, dir);
-  return Object.values(dir).sort((a, b) => a.name.localeCompare(b.name));
+  cachedDirectoryList = Object.values(dir).sort((a, b) => a.name.localeCompare(b.name));
+  lastDirectoryUpdateMs = Date.now();
+  return cachedDirectoryList;
 }
+
 
 /** Resolve an XUID to its current gamertag (Bedrock console commands are name-based). */
 export async function resolveName(dataRoot, xuid) {

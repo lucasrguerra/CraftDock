@@ -11,7 +11,13 @@ describe('BedrockAdapter', () => {
   it('whitelistAdd maps to "allowlist add"', async () => {
     const { stdin, adapter } = make();
     await adapter.whitelistAdd('steve');
-    expect(stdin.send).toHaveBeenCalledWith('allowlist add steve');
+    expect(stdin.send).toHaveBeenCalledWith('allowlist add "steve"');
+  });
+
+  it('whitelistRemove maps to "allowlist remove"', async () => {
+    const { stdin, adapter } = make();
+    await adapter.whitelistRemove('steve');
+    expect(stdin.send).toHaveBeenCalledWith('allowlist remove "steve"');
   });
 
   it('ban throws NotSupportedError', async () => {
@@ -138,8 +144,17 @@ describe('BedrockAdapter', () => {
     expect(await adapter.queryUniqueId('alex')).toBe('-8589934591');
   });
 
+  it('queryUniqueId extracts decimal uniqueId from noisy log output', async () => {
+    const { adapter } = make(async (cmd) =>
+      cmd.startsWith('querytarget')
+        ? '[2026-07-22 22:43:05:123 INFO] Target data: [{"dimension":0,"position":{"x":100,"y":64,"z":-200},"uniqueId":2535407895138987}]'
+        : 'ok');
+    expect(await adapter.queryUniqueId('Lucasrguerra')).toBe('2535407895138987');
+  });
+
   it('queryUniqueId returns null when querytarget fails', async () => {
     const { adapter } = make(async () => 'Unknown command');
     expect(await adapter.queryUniqueId('alex')).toBeNull();
   });
 });
+

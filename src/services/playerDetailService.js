@@ -14,13 +14,16 @@
 const SUPPORTED = { health: true, food: true, inventory: true };
 
 async function withSnapshot(adapter, fn) {
-  await adapter.saveHold();
+  const held = await adapter.saveHold();
   try {
     return await fn();
   } finally {
-    await adapter.saveResume();
+    if (held) {
+      await adapter.saveResume();
+    }
   }
 }
+
 
 export function createPlayerDetailService({
   config, appState, dockerService, readDirectory, createFileAdapter, createBridge,
@@ -47,10 +50,20 @@ export function createPlayerDetailService({
         const uniqueId = await adapter.queryUniqueId(name);
         if (uniqueId) await bridge.learn({ xuid, name, uniqueId });
       }
-      const leveldbUuid = await bridge.resolveLeveldbUuid(xuid);
+      let leveldbUuid = await bridge.resolveLeveldbUuid(xuid);
+      if (!leveldbUuid && typeof fileAdapter.listServerUuids === 'function') {
+        try {
+          const uuids = await fileAdapter.listServerUuids();
+          if (Array.isArray(uuids) && uuids.length === 1) {
+            leveldbUuid = uuids[0];
+            await bridge.learn({ xuid, name, fallbackUuid: leveldbUuid });
+          }
+        } catch { /* ignore fallback error */ }
+      }
       if (!leveldbUuid) {
         return { xuid, name, online, needsBridge: true, supported: SUPPORTED };
       }
+
       data = serverRunning
         ? await withSnapshot(adapter, () => fileAdapter.readPlayer(leveldbUuid))
         : await fileAdapter.readPlayer(leveldbUuid);

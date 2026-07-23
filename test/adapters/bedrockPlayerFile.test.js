@@ -51,11 +51,17 @@ describe('bedrockPlayerFile', () => {
     expect(await adapter.readPlayer('00000000-0000-0000-0000-000000000000')).toBeNull();
   });
 
-  it('findByUniqueId locates the player by UniqueID', async () => {
+  it('findByUniqueId locates the player by UniqueID (int64 or UUID string format)', async () => {
     const adapter = createBedrockPlayerFile(config);
     const hit = await adapter.findByUniqueId('-8589934591');
     expect(hit).not.toBeNull();
     expect(hit.uuid).toBe(UUID);
+
+    // Modern Bedrock servers output uniqueId in UUID hex string format via querytarget:
+    // e.g. "657cb1d4-99dd-3123-b27f-d0c27df79710" or corresponding int64 (-8589934591)
+    const hit2 = await adapter.findByUniqueId('00000000-0000-0000-ffff-fffe00000001');
+    expect(hit2).not.toBeNull();
+    expect(hit2.uuid).toBe(UUID);
   });
 
   it('listServerUuids enumerates player_server_ keys', async () => {
