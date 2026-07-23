@@ -7,6 +7,7 @@ import { normalizeBedrock } from './nbtPlayer.js';
 const { LevelDB, Iterator } = pkg;
 
 const SERVER_PREFIX = 'player_server_';
+const PLAYER_PREFIX = 'player_';
 
 // Helper for matching uniqueId whether given as a decimal integer string or UUID format string
 export function matchUniqueId(a, b) {
@@ -106,11 +107,34 @@ export function createBedrockPlayerFile(config) {
     return data;
   }
 
-  // Scan player_server_* entries for the one whose UniqueID matches. NOTE the
-  // leveldb-zlib iterator yields tuples as [value, key].
+  // The DB stores identity mapping records keyed player_<uuid> (uuid = MsaId or
+  // SelfSignedId — querytarget's `uniqueId` is one of these) whose NBT holds
+  // ServerId = "player_server_<leveldb uuid>". Direct lookup, no scan.
+  async function resolveViaMapping(db, uniqueId) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(uniqueId))) return null;
+    const val = await db.get(Buffer.from(PLAYER_PREFIX + String(uniqueId).toLowerCase(), 'latin1')).catch(() => null);
+    if (!val) return null;
+    try {
+      const { parsed } = await nbt.parse(Buffer.from(val), 'little');
+      const serverId = nbt.simplify(parsed)?.ServerId;
+      if (typeof serverId === 'string' && serverId.startsWith(SERVER_PREFIX)) {
+        return serverId.slice(SERVER_PREFIX.length);
+      }
+    } catch { /* not a mapping record */ }
+    return null;
+  }
+
+  // Resolve a live uniqueId to its player_server_ record: first via the
+  // player_<uuid> mapping record, then by scanning player_server_* entries for
+  // a matching NBT UniqueID. NOTE the leveldb-zlib iterator yields [value, key].
   async function findByUniqueId(uniqueId) {
     const targetStr = String(uniqueId);
     return withDb(async (db) => {
+      const mapped = await resolveViaMapping(db, targetStr);
+      if (mapped) {
+        const val = await db.get(Buffer.from(SERVER_PREFIX + mapped, 'latin1')).catch(() => null);
+        return { uuid: mapped, data: val ? await parsePlayerBuffer(val) : null };
+      }
       const iter = new Iterator(db, { keys: true, values: true });
       try {
         let e;
