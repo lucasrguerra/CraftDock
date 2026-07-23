@@ -21,7 +21,7 @@
     "express": "^4.19.2",
     "express-session": "^1.18.0",
     "leveldb-zlib": "^1.2.0",
-    "multer": "^1.4.5-lts.1",
+    "multer": "^2.0.2",
     "prismarine-nbt": "^2.8.0",
     "rcon-client": "^4.2.4",
     "socket.io": "^4.7.5",
@@ -30,6 +30,11 @@
   "devDependencies": {
     "minecraft-assets": "^1.17.0",
     "supertest": "^7.0.0",
-    "vitest": "^2.0.0"
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "axios": "^1.18.0",
+    "tar": "^7.5.18",
+    "uuid": "^11.1.1"
   }
 }
