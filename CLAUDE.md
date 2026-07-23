@@ -90,6 +90,10 @@ Bedrock never stores the gamertag or XUID readably inside the world DB. Three id
 
 `PROPERTY_SCHEMA` in `src/routes/properties.js` is the single source of managed keys: type-based validation on PUT **and** vanilla defaults merged into GET (so the UI always starts fully populated; `motd` deliberately has no default). The frontend `options.js` renders from its own `CATEGORIES` list — when adding a property, update both the schema (backend) and CATEGORIES (frontend).
 
+### Item icon assets (generated, never committed)
+
+The player inspector renders Minecraft item icons served from `src/public/assets/mc/items/` — that directory is **gitignored and generated**: `scripts/extract-mc-assets.mjs` copies flat item PNGs out of the `minecraft-assets` devDependency. It runs automatically via `postinstall` for local dev, and in the Dockerfile `assets` stage at image build time (no runtime download — the panel stays offline-capable). Bump the game version with the `ASSETS_VERSION` build arg or `npm run assets -- <version>`. Unknown/modded items fall back to a text tile in the UI.
+
 ### CraftDock metadata files
 
 Panel-owned files live at the data root, siblings of the world, so they ride along in world exports/backups: `craftdock_players.json` (XUID directory), `craftdock_bedrock_ids.json` (identity bridge).

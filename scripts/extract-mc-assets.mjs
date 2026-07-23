@@ -2,8 +2,14 @@
 // src/public/assets/mc/items/<item>.png so the panel serves them locally
 // (offline-friendly, no runtime dependency, tiny footprint vs the full pkg).
 //
-// Usage: node scripts/extract-mc-assets.mjs [version]   (default: newest available)
-// Re-run + commit when bumping the asset version; the PNGs are checked in.
+// Usage: node scripts/extract-mc-assets.mjs [version] [--required]
+//   version     defaults to the newest available in the package
+//   --required  fail (exit 1) when minecraft-assets is not installed — used by
+//               the Dockerfile assets stage. Without it the script is a no-op
+//               warning, so `npm ci --omit=dev` (postinstall) doesn't break.
+//
+// The output dir is gitignored: icons are generated at Docker build time (see
+// Dockerfile "assets" stage) and by postinstall for local dev.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,10 +19,22 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const dataRoot = path.join(here, '..', 'node_modules', 'minecraft-assets', 'minecraft-assets', 'data');
 const outDir = path.join(here, '..', 'src', 'public', 'assets', 'mc', 'items');
 
+const required = process.argv.includes('--required');
+const args = process.argv.slice(2).filter((a) => a !== '--required');
+
+if (!fs.existsSync(dataRoot)) {
+  if (required) {
+    console.error('minecraft-assets is not installed — run `npm install` (with dev deps) first');
+    process.exit(1);
+  }
+  console.warn('minecraft-assets not installed (prod install?) — skipping icon extraction');
+  process.exit(0);
+}
+
 const versions = fs.readdirSync(dataRoot)
   .filter((v) => /^\d+\.\d+(\.\d+)?$/.test(v))
   .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-const version = process.argv[2] || versions.at(-1);
+const version = args[0] || versions.at(-1);
 const src = path.join(dataRoot, version);
 if (!fs.existsSync(src)) {
   console.error(`version ${version} not found; available: ${versions.join(', ')}`);

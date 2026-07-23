@@ -10,7 +10,9 @@
     "dev": "node --watch --env-file=.env src/main.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "hash": "node scripts/hash-password.js"
+    "hash": "node scripts/hash-password.js",
+    "postinstall": "node scripts/extract-mc-assets.mjs",
+    "assets": "node scripts/extract-mc-assets.mjs"
   },
   "dependencies": {
     "archiver": "^6.0.1",
