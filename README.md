@@ -123,11 +123,16 @@ Both stacks share the **same** panel env block (only the edition, world folder a
 Minecraft image differ) and read their values from `.env` — see [`.env.example`](.env.example)
 for the canonical list.
 
-> **The panel publishes port 8081** (`${PORT:-8081}:8081`), so after `up` it is
-> reachable at <http://localhost:8081>. For local HTTP testing set
-> `NODE_ENV=development` in `.env` (otherwise the secure cookie is dropped over
-> plain HTTP). Behind Coolify/Traefik, point the service domain at container
-> port **8081** instead and drop the host publish if it conflicts.
+> **The panel only `expose`s port 8081** (reachable over the Docker network) —
+> it is **not** published on the host by default, because the composes target a
+> reverse proxy (Coolify/Traefik terminates TLS on 443 and forwards to 8081).
+> In Coolify set the service domain **without a port** (`https://your.domain`,
+> not `:8081`) — the port there is the *public* port Traefik binds, so `:8081`
+> makes plain 443 return *"no available server"*.
+> For **local** testing without a proxy, comment out `expose` and uncomment the
+> `ports:` line in the panel service, set `NODE_ENV=development` in `.env` (so
+> the secure cookie isn't dropped over plain HTTP), then open
+> <http://localhost:8081>.
 
 > **Rebuild after changing panel code:** `--build` is required the first time and
 > whenever you change the panel source. A runtime-only change (env var) just needs
@@ -217,7 +222,10 @@ The Minecraft container is missing `stdin_open: true` + `tty: true`. Add both an
 The Minecraft service is missing `OVERRIDE_SERVER_PROPERTIES=false`.
 
 **Coolify: `Bind for 0.0.0.0:8081 failed: port is already allocated`**
-Don't publish the panel's port on the host under Coolify — its Traefik reaches the container over the network. Replace the panel's `ports:` with `expose: ["8081"]` and set the service **domain** in Coolify pointing to port **8081**. Keep `ports:` only on the Minecraft service (the raw game port).
+Don't publish the panel's port on the host under Coolify — its Traefik reaches the container over the network. The composes already ship with `expose: ["8081"]` and the `ports:` line commented out (this is the default); keep it that way and set the service **domain** in Coolify. Keep `ports:` only on the Minecraft service (the raw game port).
+
+**Coolify: `no available server` when opening `https://your.domain/`**
+You put a port in the Coolify domain field (`https://your.domain:8081`). That port is the *public* port Traefik binds, so the panel ends up served only on `:8081` and plain 443 has no route. Set the domain to **`https://your.domain`** (no port) — Traefik forwards to the container's exposed 8081 automatically. If it still can't find the backend, set the target port to `8081` in Coolify's port settings.
 
 **Coolify / docker compose: login fails, or warning `The "…" variable is not set. Defaulting to a blank string.`**
 The `…` is the tail of your bcrypt hash — bcrypt hashes contain `$`, which docker compose interprets as variable interpolation, corrupting the hash. **Use `ADMIN_PASSWORD_HASH_B64`** (the base64 line from `npm run hash`) instead of the raw `ADMIN_PASSWORD_HASH` — base64 has no `$`, so nothing gets mangled. (Alternatively, keep the raw hash but escape every `$` as `$$`.)
