@@ -9,16 +9,16 @@ services:
     # Behind a reverse proxy (Coolify/Traefik) the panel is reached over the
     # internal Docker network, so only EXPOSE the port — do NOT publish it on the
     # host. In Coolify, set the service domain WITHOUT a port
-    # (https://your.domain, not https://your.domain:8081): the port in the domain
-    # field is the PUBLIC port Traefik binds, so adding :8081 there makes plain
-    # 443 return "no available server". Traefik forwards to 8081 automatically.
+    # (https://your.domain, not https://your.domain:3000) and make sure the
+    # service's target port is 3000 — otherwise Traefik forwards to the wrong
+    # port and plain 443 returns "no available server".
     #
     # For LOCAL testing without a proxy, comment out `expose` and uncomment
-    # `ports` to publish on the host, then open http://localhost:8081.
+    # `ports` to publish on the host, then open http://localhost:3000.
     expose:
-      - "8081"
+      - "3000"
     # ports:
-    #   - "${PORT:-8081}:8081"
+    #   - "${PORT:-3000}:3000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - mc-data:/minecraft/data

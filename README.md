@@ -90,7 +90,7 @@ npm test
 npm run dev            # loads .env automatically, hot-reloads on change
 ```
 
-Open <http://localhost:8081> and log in with your password.
+Open <http://localhost:3000> and log in with your password.
 
 > `npm run dev` uses `node --env-file=.env`, so your `.env` is loaded automatically.
 > `npm start` (production) does **not** load `.env` — it reads real environment
@@ -123,16 +123,17 @@ Both stacks share the **same** panel env block (only the edition, world folder a
 Minecraft image differ) and read their values from `.env` — see [`.env.example`](.env.example)
 for the canonical list.
 
-> **The panel only `expose`s port 8081** (reachable over the Docker network) —
+> **The panel only `expose`s port 3000** (reachable over the Docker network) —
 > it is **not** published on the host by default, because the composes target a
-> reverse proxy (Coolify/Traefik terminates TLS on 443 and forwards to 8081).
+> reverse proxy (Coolify/Traefik terminates TLS on 443 and forwards to 3000).
 > In Coolify set the service domain **without a port** (`https://your.domain`,
-> not `:8081`) — the port there is the *public* port Traefik binds, so `:8081`
-> makes plain 443 return *"no available server"*.
+> not `:3000`) and make sure the service's **target port is 3000** — a mismatch
+> (e.g. Traefik still forwarding to an old port) makes plain 443 return
+> *"no available server"*.
 > For **local** testing without a proxy, comment out `expose` and uncomment the
 > `ports:` line in the panel service, set `NODE_ENV=development` in `.env` (so
 > the secure cookie isn't dropped over plain HTTP), then open
-> <http://localhost:8081>.
+> <http://localhost:3000>.
 
 > **Rebuild after changing panel code:** `--build` is required the first time and
 > whenever you change the panel source. A runtime-only change (env var) just needs
@@ -174,7 +175,7 @@ The panel controls an existing, **fixed** container — it never recreates it or
 | `RCON_PORT` | | `25575` | RCON port (Java) |
 | `RCON_PASSWORD` | | *(empty)* | RCON password — **required for Java**, leave empty for Bedrock |
 | `MAP_VERSION` | | *(per edition)* | mcseedmap version segment override (e.g. `1.21-Java`, `26.30.0-Bedrock`) |
-| `PORT` | | `8081` | Port the panel listens on (and the host port in the composes) |
+| `PORT` | | `3000` | Port the panel listens on (also the exposed/target port in the composes) |
 | `NODE_ENV` | | `development` | `production` marks the session cookie `secure` (needs HTTPS) |
 | `LOG_LEVEL` | | `info` | `error` \| `warn` \| `info` \| `debug` |
 | `MAX_UPLOAD_MB` | | `1024` | Max world upload size (MB) |
@@ -196,21 +197,21 @@ The panel controls an existing, **fixed** container — it never recreates it or
 **`pull access denied for craftdock-panel` on `docker compose up`**
 The panel image is built locally, not pulled. Add `--build`: `docker compose up -d --build`.
 
-**`failed to bind host port 0.0.0.0:8081: address already in use`**
-Something else is on port 8081 — usually a leftover `npm run dev`. Find and stop it:
+**`failed to bind host port 0.0.0.0:3000: address already in use`**
+Something else is on port 3000 — usually a leftover `npm run dev`. Find and stop it:
 ```powershell
-Get-NetTCPConnection -LocalPort 8081 -State Listen        # find the PID
+Get-NetTCPConnection -LocalPort 3000 -State Listen        # find the PID
 Stop-Process -Id <PID> -Force                             # stop it
 ```
 Then bring the stack up again.
 
-**`ERR_CONNECTION_REFUSED` even though the panel logs "listening on :8081"**
+**`ERR_CONNECTION_REFUSED` even though the panel logs "listening on :3000"**
 The container is listening internally but the host port wasn't published — typically a container that was *created* during a failed port-bind and then only restarted. Recreate it:
 ```bash
 docker compose -f <compose-file> down
 docker compose -f <compose-file> up -d --force-recreate
 ```
-Confirm the host is listening: `Get-NetTCPConnection -LocalPort 8081 -State Listen`.
+Confirm the host is listening: `Get-NetTCPConnection -LocalPort 3000 -State Listen`.
 
 **Login succeeds (no error) but the page stays on the login screen**
 The session cookie isn't being stored. It's marked `secure` (from `NODE_ENV=production`) while you're on plain `http://localhost` — browsers drop secure cookies over HTTP. For local HTTP testing set `NODE_ENV=development`; in production serve over HTTPS. (Behind a reverse proxy, the app already trusts `X-Forwarded-Proto` via `trust proxy`.)
@@ -221,11 +222,11 @@ The Minecraft container is missing `stdin_open: true` + `tty: true`. Add both an
 **Options tab changes don't persist after restart**
 The Minecraft service is missing `OVERRIDE_SERVER_PROPERTIES=false`.
 
-**Coolify: `Bind for 0.0.0.0:8081 failed: port is already allocated`**
-Don't publish the panel's port on the host under Coolify — its Traefik reaches the container over the network. The composes already ship with `expose: ["8081"]` and the `ports:` line commented out (this is the default); keep it that way and set the service **domain** in Coolify. Keep `ports:` only on the Minecraft service (the raw game port).
+**Coolify: `Bind for 0.0.0.0:3000 failed: port is already allocated`**
+Don't publish the panel's port on the host under Coolify — its Traefik reaches the container over the network. The composes already ship with `expose: ["3000"]` and the `ports:` line commented out (this is the default); keep it that way and set the service **domain** in Coolify. Keep `ports:` only on the Minecraft service (the raw game port).
 
 **Coolify: `no available server` when opening `https://your.domain/`**
-You put a port in the Coolify domain field (`https://your.domain:8081`). That port is the *public* port Traefik binds, so the panel ends up served only on `:8081` and plain 443 has no route. Set the domain to **`https://your.domain`** (no port) — Traefik forwards to the container's exposed 8081 automatically. If it still can't find the backend, set the target port to `8081` in Coolify's port settings.
+Traefik has a route for the domain but is forwarding to the wrong container port, so the backend looks empty. Two things to check: (1) the Coolify domain must be set **without a port** (`https://your.domain`, not `:3000`); (2) the service's **target port must be 3000** — the panel listens on 3000. A common trap is an old target port left over from a previous setup (e.g. Traefik still pointing at a port the app no longer listens on): align it to 3000 and redeploy.
 
 **Coolify / docker compose: login fails, or warning `The "…" variable is not set. Defaulting to a blank string.`**
 The `…` is the tail of your bcrypt hash — bcrypt hashes contain `$`, which docker compose interprets as variable interpolation, corrupting the hash. **Use `ADMIN_PASSWORD_HASH_B64`** (the base64 line from `npm run hash`) instead of the raw `ADMIN_PASSWORD_HASH` — base64 has no `$`, so nothing gets mangled. (Alternatively, keep the raw hash but escape every `$` as `$$`.)

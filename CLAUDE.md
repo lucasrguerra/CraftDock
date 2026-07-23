@@ -11,7 +11,7 @@ A lightweight, self-hosted web panel that manages a **single** Minecraft server 
 ```bash
 npm test              # full Vitest suite — must pass before any commit
 npm run test:watch
-npm run dev           # dev server (loads .env, watches files), panel on :8081
+npm run dev           # dev server (loads .env, watches files), panel on :3000
 npm run hash -- <pw>  # generate the admin bcrypt hash (raw + base64 forms)
 docker compose -f docker-compose.bedrock.yaml up -d --build   # full Bedrock stack
 docker compose -f docker-compose.java.yaml up -d --build      # full Java stack
@@ -107,7 +107,7 @@ Panel-owned files live at the data root, siblings of the world, so they ride alo
 
 ## Environment & deployment facts
 
-- Panel listens on **8081** (config default; composes publish `8081:8081`).
+- Panel listens on **3000** (config default). The composes only `expose` it (reverse-proxy first); publish on the host only for local testing. Under Coolify the service's target port must be 3000.
 - Auth: single admin password; prefer `ADMIN_PASSWORD_HASH_B64` under docker compose/Coolify (bcrypt `$` gets eaten by interpolation). `SESSION_SECRET` signs the cookie; `NODE_ENV=production` marks it `secure` (needs HTTPS).
 - The Minecraft service **must** have `stdin_open: true` + `tty: true` (stdin channel + non-multiplexed logs) and `OVERRIDE_SERVER_PROPERTIES=false` (so the Options tab persists).
 - The `mc-data` volume is shared panel ↔ game container; `MC_DATA_PATH` points at it inside the panel.
