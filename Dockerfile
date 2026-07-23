@@ -7,6 +7,10 @@
 FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 COPY package*.json ./
+# scripts/ must exist before npm ci: the postinstall hook runs the (no-op here)
+# icon extraction. --ignore-scripts is NOT an option — leveldb-zlib compiles
+# through its own install scripts.
+COPY scripts ./scripts
 RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 make g++ cmake zlib1g-dev ca-certificates \
  && npm ci --omit=dev
