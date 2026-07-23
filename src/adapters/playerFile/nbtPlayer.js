@@ -6,7 +6,9 @@
 //   dimension: 'overworld' | 'nether' | 'end',
 //   health: { current, max } | null,
 //   food: number | null,
-//   inventory: [ { slot, name, count } ],
+//   inventory: [ { slot, name, count } ],   // slots 0-8 hotbar, 9-35 main grid
+//   armor: { head, chest, legs, feet },     // each { name, count } | null
+//   offhand: { name, count } | null,
 //   gamemode: string | null,
 //   xp: { level } | null,
 //   uniqueId: string | null,   // Bedrock only — used by the identity bridge
@@ -44,6 +46,8 @@ function pos(arr) {
     : null;
 }
 
+const item = (name, count) => (name ? { name, count } : null);
+
 export function normalizeBedrock(s = {}) {
   const attr = (name) => (s.Attributes || []).find((a) => a.Name === name);
   const hp = attr('minecraft:health');
@@ -56,21 +60,43 @@ export function normalizeBedrock(s = {}) {
     inventory: (s.Inventory || [])
       .filter((i) => i && i.Name)
       .map((i) => ({ slot: i.Slot, name: i.Name, count: i.Count })),
+    // Bedrock keeps armor/offhand in their own lists: Armor = [head, chest, legs, feet(, body)]
+    armor: {
+      head: item(s.Armor?.[0]?.Name, s.Armor?.[0]?.Count),
+      chest: item(s.Armor?.[1]?.Name, s.Armor?.[1]?.Count),
+      legs: item(s.Armor?.[2]?.Name, s.Armor?.[2]?.Count),
+      feet: item(s.Armor?.[3]?.Name, s.Armor?.[3]?.Count),
+    },
+    offhand: item(s.Offhand?.[0]?.Name, s.Offhand?.[0]?.Count),
     gamemode: BEDROCK_GAMEMODE[s.PlayerGameMode] ?? null,
     xp: typeof s.PlayerLevel === 'number' ? { level: s.PlayerLevel } : null,
     uniqueId: 'UniqueID' in s ? int64ToString(s.UniqueID) : null,
   };
 }
 
+// Java stores everything in one Inventory list: 0-8 hotbar, 9-35 main grid,
+// 100=feet 101=legs 102=chest 103=head, -106=offhand.
+const JAVA_ARMOR_SLOT = { 100: 'feet', 101: 'legs', 102: 'chest', 103: 'head' };
+
 export function normalizeJava(s = {}) {
+  const all = (s.Inventory || []).filter((i) => i && i.id);
+  const armor = { head: null, chest: null, legs: null, feet: null };
+  let offhand = null;
+  const inventory = [];
+  for (const i of all) {
+    const entry = { slot: i.Slot, name: i.id, count: i.Count };
+    if (JAVA_ARMOR_SLOT[i.Slot]) armor[JAVA_ARMOR_SLOT[i.Slot]] = item(i.id, i.Count);
+    else if (i.Slot === -106) offhand = item(i.id, i.Count);
+    else inventory.push(entry);
+  }
   return {
     position: pos(s.Pos),
     dimension: javaDimension(s.Dimension),
     health: typeof s.Health === 'number' ? { current: s.Health, max: 20 } : null,
     food: typeof s.foodLevel === 'number' ? s.foodLevel : null,
-    inventory: (s.Inventory || [])
-      .filter((i) => i && i.id)
-      .map((i) => ({ slot: i.Slot, name: i.id, count: i.Count })),
+    inventory,
+    armor,
+    offhand,
     gamemode: JAVA_GAMEMODE[s.playerGameType] ?? null,
     xp: typeof s.XpLevel === 'number' ? { level: s.XpLevel } : null,
     uniqueId: null,

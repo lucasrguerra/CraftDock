@@ -186,6 +186,64 @@ export function renderPlayers(root) {
       </div>`;
   }
 
+  // --- Minecraft-style inventory rendering ---
+  // Slot layout follows the game: 0-8 hotbar, 9-35 main grid (3 rows of 9).
+  const ICON_BASE = '/assets/mc/items';
+  const shortName = (n) => String(n || '').replace(/^minecraft:/, '');
+  const prettyName = (n) => shortName(n).replace(/_/g, ' ');
+
+  function slotHtml(it, { placeholder = '' } = {}) {
+    const inner = it && it.name
+      ? `<img src="${ICON_BASE}/${esc(shortName(it.name))}.png" alt="" loading="lazy"
+             class="w-7 h-7 [image-rendering:pixelated]"
+             onerror="this.outerHTML='<span class=\\'mc-slot-fallback\\'>${esc(prettyName(it.name)).replace(/'/g, '&#39;')}</span>'">
+         ${it.count > 1 ? `<span class="mc-count">${it.count}</span>` : ''}`
+      : placeholder;
+    const title = it && it.name ? ` title="${esc(prettyName(it.name))}${it.count > 1 ? ` ×${it.count}` : ''}"` : '';
+    return `<div class="mc-slot"${title}>${inner}</div>`;
+  }
+
+  function inventoryHtml(d) {
+    const bySlot = new Map((d.inventory || []).filter((i) => i && i.name).map((i) => [i.slot, i]));
+    const row = (from, to) => {
+      let cells = '';
+      for (let s = from; s <= to; s++) cells += slotHtml(bySlot.get(s));
+      return `<div class="grid grid-cols-9 gap-[3px]">${cells}</div>`;
+    };
+    const armor = d.armor || {};
+    const armorIcons = { head: '🪖', chest: '🦺', legs: '👖', feet: '🥾' };
+    const equipment = ['head', 'chest', 'legs', 'feet']
+      .map((k) => slotHtml(armor[k], { placeholder: `<span class="mc-slot-ph">${armorIcons[k]}</span>` }))
+      .join('');
+    return `
+      <div class="mc-inv select-none">
+        <div class="flex items-center justify-between mb-2.5">
+          <div class="flex gap-[3px]">${equipment}</div>
+          <div class="flex items-center gap-[3px]">
+            <span class="text-[10px] text-[#404040] font-semibold mr-1">Escudo</span>
+            ${slotHtml(d.offhand, { placeholder: '<span class="mc-slot-ph">🛡️</span>' })}
+          </div>
+        </div>
+        ${row(9, 17)}${row(18, 26)}${row(27, 35)}
+        <div class="mt-2">${row(0, 8)}</div>
+      </div>
+      <style>
+        .mc-inv { background:#c6c6c6; border-radius:6px; padding:10px;
+                  border-top:2px solid #fff; border-left:2px solid #fff;
+                  border-right:2px solid #555; border-bottom:2px solid #555; width:fit-content; margin:0 auto; }
+        .mc-inv .grid + .grid { margin-top: 3px; }
+        .mc-slot { position:relative; width:36px; height:36px; background:#8b8b8b;
+                   border-top:2px solid #373737; border-left:2px solid #373737;
+                   border-bottom:2px solid #fff; border-right:2px solid #fff;
+                   display:flex; align-items:center; justify-content:center; overflow:hidden; }
+        .mc-count { position:absolute; right:1px; bottom:-1px; font-size:12px; font-weight:700;
+                    color:#fff; text-shadow:1px 1px 0 #3f3f3f; line-height:1; pointer-events:none; }
+        .mc-slot-fallback { font-size:7px; line-height:1.1; color:#2f2f2f; text-align:center;
+                            word-break:break-word; padding:1px; font-weight:600; }
+        .mc-slot-ph { opacity:.35; font-size:14px; filter:grayscale(1); }
+      </style>`;
+  }
+
   function renderModalBody(d, name) {
     if (d.needsBridge) {
       return `<p class="text-sm text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">Abra este jogador uma vez enquanto ele está <b>online</b> para vincular os dados do save (o Bedrock não liga o nome ao arquivo até o primeiro acesso observado).</p>`;
@@ -195,16 +253,7 @@ export function renderPlayers(root) {
     }
     const dimLabel = { overworld: 'Overworld', nether: 'Nether', end: 'End' }[d.dimension] || d.dimension;
     const p = d.position;
-    const items = (d.inventory || []).filter((i) => i && i.name);
-    const invGrid = items.length
-      ? `<div class="grid grid-cols-4 sm:grid-cols-6 gap-1.5">${items.map((i) => {
-          const short = esc(i.name.replace(/^minecraft:/, '').replace(/_/g, ' '));
-          return `<div class="relative bg-slate-950/60 border border-slate-800 rounded-lg p-1.5 flex flex-col items-center justify-center aspect-square" title="${short} ×${i.count}">
-            <span class="text-[9px] text-slate-300 text-center leading-tight line-clamp-2">${short}</span>
-            <span class="absolute bottom-0.5 right-1 text-[10px] font-bold text-emerald-400">${i.count}</span>
-          </div>`;
-        }).join('')}</div>`
-      : `<p class="text-xs text-slate-500 italic">Inventário vazio.</p>`;
+    const invGrid = inventoryHtml(d);
 
     return `
       <div class="space-y-4">
@@ -221,7 +270,7 @@ export function renderPlayers(root) {
         </div>
         <div>
           <div class="text-[11px] text-slate-500 mb-2">Inventário${d.xp ? ` · <span class="text-slate-400">Nível ${d.xp.level}</span>` : ''}${d.gamemode ? ` · <span class="text-slate-400 capitalize">${esc(d.gamemode)}</span>` : ''}</div>
-          ${invGrid}
+          <div class="overflow-x-auto">${invGrid}</div>
         </div>
       </div>`;
   }

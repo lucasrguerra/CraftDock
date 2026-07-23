@@ -26,6 +26,7 @@
     "unzipper": "^0.10.14"
   },
   "devDependencies": {
+    "minecraft-assets": "^1.17.0",
     "supertest": "^7.0.0",
     "vitest": "^2.0.0"
   }
