@@ -6,3 +6,5 @@ coverage/
 docs/
 .superpowers/
 world.zip
+logs.txt
+src/public/assets/mc/

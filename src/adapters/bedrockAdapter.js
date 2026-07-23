@@ -2,6 +2,25 @@ import { parsePlayerList, parseWhitelistList, CAPABILITIES, NotSupportedError } 
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Parse the console output of `querytarget` into its first target object, or
+// null. Strips color codes, log-line prefixes and the "Target data:" label.
+export function parseQueryTarget(res) {
+  if (!res) return null;
+  try {
+    let clean = res.replace(/§[0-9a-fk-or]/ig, '').trim();
+    clean = clean.replace(/^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}:\d{3}\s+\w+\]\s*/gm, '');
+    if (clean.includes('Target data:')) {
+      clean = clean.substring(clean.indexOf('Target data:') + 'Target data:'.length);
+    }
+    const s = clean.indexOf('['), e = clean.lastIndexOf(']');
+    if (s === -1 || e === -1 || e <= s) return null;
+    const data = JSON.parse(clean.substring(s, e + 1));
+    return data?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function createBedrockAdapter(stdinService) {
   const send = (cmd) => stdinService.send(cmd);
   return {
@@ -39,28 +58,17 @@ export function createBedrockAdapter(stdinService) {
     },
     saveResume: () => send('save resume').catch(() => {}),
 
-    // Returns the live entity's uniqueId (matches the LevelDB player's UniqueID),
-    // used to bridge a gamertag to its LevelDB record. Online players only.
+    // Returns the live entity's uniqueId (the player's MsaId/SelfSignedId UUID,
+    // which keys the LevelDB player_<uuid> mapping record), used to bridge a
+    // gamertag to its LevelDB record. Online players only.
     async queryUniqueId(n) {
       try {
         const res = await send(`querytarget @a[name="${n}"]`);
-        if (!res) return null;
-
-        // Fast & resilient regex matching for uniqueId (integer or string)
-        const match = res.match(/"uniqueId"\s*:\s*(-?\d+|"[^"]+")/i);
-        if (match) {
-          return match[1].replace(/"/g, '');
-        }
-
-        let clean = res.replace(/§[0-9a-fk-or]/ig, '').trim();
-        clean = clean.replace(/^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}:\d{3}\s+\w+\]\s*/gm, '');
-        if (clean.includes('Target data:')) {
-          clean = clean.substring(clean.indexOf('Target data:') + 'Target data:'.length);
-        }
-        const s = clean.indexOf('['), e = clean.lastIndexOf(']');
-        if (s === -1 || e === -1 || e <= s) return null;
-        const data = JSON.parse(clean.substring(s, e + 1));
-        return data?.[0]?.uniqueId != null ? String(data[0].uniqueId) : null;
+        const target = parseQueryTarget(res);
+        if (target?.uniqueId != null) return String(target.uniqueId);
+        // Fallback: regex over raw output when the JSON block is mangled
+        const match = res?.match(/"uniqueId"\s*:\s*(-?\d+|"[^"]+")/i);
+        return match ? match[1].replace(/"/g, '') : null;
       } catch {
         return null;
       }
@@ -70,29 +78,11 @@ export function createBedrockAdapter(stdinService) {
     // from worlds/<level-name>/level.dat by seedService — do NOT add getSeed here.
     async getPlayerPosition(n) {
       try {
-        const resQuery = await send(`querytarget @a[name="${n}"]`);
-        if (resQuery) {
-          let cleanQuery = resQuery.replace(/§[0-9a-fk-or]/ig, '').trim();
-          cleanQuery = cleanQuery.replace(/^\[\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}:\d{3}\s+\w+\]\s*/gm, '');
-          if (cleanQuery.includes('Target data:')) {
-            cleanQuery = cleanQuery.substring(cleanQuery.indexOf('Target data:') + 'Target data:'.length);
-          }
-          const startIdx = cleanQuery.indexOf('[');
-          const endIdx = cleanQuery.lastIndexOf(']');
-          if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-            const jsonStr = cleanQuery.substring(startIdx, endIdx + 1);
-            const data = JSON.parse(jsonStr);
-            if (data && data[0]) {
-              const p = data[0].position;
-              const dimCode = data[0].dimension;
-              let dimension = 'overworld';
-              if (dimCode === 1) dimension = 'nether';
-              if (dimCode === 2) dimension = 'end';
-              return { x: p.x, y: p.y, z: p.z, dimension };
-            }
-          }
-        }
-        return null;
+        const target = parseQueryTarget(await send(`querytarget @a[name="${n}"]`));
+        if (!target?.position) return null;
+        const { x, y, z } = target.position;
+        const dimension = target.dimension === 1 ? 'nether' : target.dimension === 2 ? 'end' : 'overworld';
+        return { x, y, z, dimension };
       } catch {
         return null;
       }

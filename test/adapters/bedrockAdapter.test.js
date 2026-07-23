@@ -152,6 +152,30 @@ describe('BedrockAdapter', () => {
     expect(await adapter.queryUniqueId('Lucasrguerra')).toBe('2535407895138987');
   });
 
+  it('queryUniqueId parses the real multi-line 1.26 output (UUID uniqueId, id present)', async () => {
+    // Captured verbatim from a live bedrock 1.26.33.2 server
+    const real = [
+      '[2026-07-23 02:40:43:441 INFO] Target data: [',
+      '   {',
+      '      "dimension" : 0,',
+      '      "id" : -64424509439,',
+      '      "position" : {',
+      '         "x" : 79.52253723144531,',
+      '         "y" : 98.62001037597656,',
+      '         "z" : 14.37582015991211',
+      '      },',
+      '      "uniqueId" : "657cb1d4-99dd-3123-b27f-d0c27df79710",',
+      '      "yRot" : -82.85218048095703',
+      '   }',
+      ']',
+    ].join('\n');
+    const { adapter } = make(async (cmd) => (cmd.startsWith('querytarget') ? real : 'ok'));
+    expect(await adapter.queryUniqueId('Lucasrguerra')).toBe('657cb1d4-99dd-3123-b27f-d0c27df79710');
+    expect(await adapter.getPlayerPosition('Lucasrguerra')).toEqual({
+      x: 79.52253723144531, y: 98.62001037597656, z: 14.37582015991211, dimension: 'overworld',
+    });
+  });
+
   it('queryUniqueId returns null when querytarget fails', async () => {
     const { adapter } = make(async () => 'Unknown command');
     expect(await adapter.queryUniqueId('alex')).toBeNull();

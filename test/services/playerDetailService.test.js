@@ -33,7 +33,10 @@ describe('playerDetailService', () => {
   });
 
   it('bedrock online: learns the bridge and reads under a save snapshot', async () => {
-    const bridge = { learn: vi.fn(async () => ({})), resolveLeveldbUuid: vi.fn(async () => 'uuid-1') };
+    const bridge = {
+      learn: vi.fn(async () => ({})),
+      resolveLeveldbUuid: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce('uuid-1'),
+    };
     const { adapter, service } = setup({
       edition: 'bedrock', online: true,
       dir: { '2535': { name: 'Lucas', xuid: '2535' } },

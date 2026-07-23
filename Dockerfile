@@ -7,9 +7,23 @@
 FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 COPY package*.json ./
+# scripts/ must exist before npm ci: the postinstall hook runs the (no-op here)
+# icon extraction. --ignore-scripts is NOT an option — leveldb-zlib compiles
+# through its own install scripts.
+COPY scripts ./scripts
 RUN apt-get update \
  && apt-get install -y --no-install-recommends python3 make g++ cmake zlib1g-dev ca-certificates \
  && npm ci --omit=dev
+
+# Item icons are generated at build time (not committed, not downloaded at
+# runtime): install the versioned minecraft-assets package and extract the flat
+# item PNGs. Bump ASSETS_VERSION (or rebuild) to pick up new game items.
+FROM node:20-bookworm-slim AS assets
+ARG ASSETS_VERSION=latest
+WORKDIR /app
+COPY scripts/extract-mc-assets.mjs scripts/
+RUN npm install --no-save --ignore-scripts minecraft-assets@${ASSETS_VERSION} \
+ && node scripts/extract-mc-assets.mjs --required
 
 FROM node:20-bookworm-slim
 WORKDIR /app
@@ -19,6 +33,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY package*.json ./
 COPY src ./src
 COPY scripts ./scripts
+COPY --from=assets /app/src/public/assets/mc ./src/public/assets/mc
 ENV NODE_ENV=production
 EXPOSE 8081
 CMD ["node", "src/main.js"]

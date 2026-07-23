@@ -35,6 +35,32 @@ describe('normalizeBedrock', () => {
     expect(d.xp).toEqual({ level: 10 });
     expect(d.uniqueId).toBe('-8589934591');
   });
+
+  it('extracts armor (head/chest/legs/feet) and offhand from their own NBT lists', () => {
+    const d = normalizeBedrock({
+      Armor: [
+        { Name: 'minecraft:iron_helmet', Count: 1 },
+        { Name: 'minecraft:iron_chestplate', Count: 1 },
+        { Name: '', Count: 0 },
+        { Name: 'minecraft:leather_boots', Count: 1 },
+        { Name: '', Count: 0 }, // 5th body slot on some versions — ignored
+      ],
+      Offhand: [{ Name: 'minecraft:shield', Count: 1 }],
+    });
+    expect(d.armor).toEqual({
+      head: { name: 'minecraft:iron_helmet', count: 1 },
+      chest: { name: 'minecraft:iron_chestplate', count: 1 },
+      legs: null,
+      feet: { name: 'minecraft:leather_boots', count: 1 },
+    });
+    expect(d.offhand).toEqual({ name: 'minecraft:shield', count: 1 });
+  });
+
+  it('yields empty armor/offhand when the lists are absent or empty-named', () => {
+    const d = normalizeBedrock({});
+    expect(d.armor).toEqual({ head: null, chest: null, legs: null, feet: null });
+    expect(d.offhand).toBeNull();
+  });
 });
 
 describe('normalizeJava', () => {
@@ -52,5 +78,27 @@ describe('normalizeJava', () => {
     expect(d.inventory).toEqual([{ slot: 0, name: 'minecraft:dirt', count: 64 }]);
     expect(d.gamemode).toBe('survival');
     expect(d.xp).toEqual({ level: 3 });
+  });
+
+  it('splits armor (slots 100-103) and offhand (-106) out of the java Inventory list', () => {
+    const d = normalizeJava({
+      Inventory: [
+        { Slot: 0, id: 'minecraft:dirt', Count: 64 },
+        { Slot: 100, id: 'minecraft:iron_boots', Count: 1 },
+        { Slot: 101, id: 'minecraft:iron_leggings', Count: 1 },
+        { Slot: 102, id: 'minecraft:iron_chestplate', Count: 1 },
+        { Slot: 103, id: 'minecraft:iron_helmet', Count: 1 },
+        { Slot: -106, id: 'minecraft:shield', Count: 1 },
+      ],
+    });
+    // armor/offhand are NOT part of the regular inventory grid
+    expect(d.inventory).toEqual([{ slot: 0, name: 'minecraft:dirt', count: 64 }]);
+    expect(d.armor).toEqual({
+      head: { name: 'minecraft:iron_helmet', count: 1 },
+      chest: { name: 'minecraft:iron_chestplate', count: 1 },
+      legs: { name: 'minecraft:iron_leggings', count: 1 },
+      feet: { name: 'minecraft:iron_boots', count: 1 },
+    });
+    expect(d.offhand).toEqual({ name: 'minecraft:shield', count: 1 });
   });
 });

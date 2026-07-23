@@ -46,27 +46,42 @@ export function createPlayerDetailService({
     let data;
     if (edition === 'bedrock') {
       const bridge = createBridge({ dataRoot, fileAdapter });
-      if (online) {
-        const uniqueId = await adapter.queryUniqueId(name);
-        if (uniqueId) await bridge.learn({ xuid, name, uniqueId });
-      }
-      let leveldbUuid = await bridge.resolveLeveldbUuid(xuid);
-      if (!leveldbUuid && typeof fileAdapter.listServerUuids === 'function') {
-        try {
-          const uuids = await fileAdapter.listServerUuids();
-          if (Array.isArray(uuids) && uuids.length === 1) {
-            leveldbUuid = uuids[0];
-            await bridge.learn({ xuid, name, fallbackUuid: leveldbUuid });
-          }
-        } catch { /* ignore fallback error */ }
-      }
-      if (!leveldbUuid) {
+
+      // Bridge lookup → live querytarget learn (online only) → single-player
+      // world fallback. Identical whether or not we're inside a snapshot.
+      const resolveUuid = async () => {
+        let uuid = await bridge.resolveLeveldbUuid(xuid);
+        if (!uuid && online) {
+          const uniqueId = await adapter.queryUniqueId(name);
+          if (uniqueId) await bridge.learn({ xuid, name, uniqueId });
+          uuid = await bridge.resolveLeveldbUuid(xuid);
+        }
+        if (!uuid && typeof fileAdapter.listServerUuids === 'function') {
+          try {
+            const uuids = await fileAdapter.listServerUuids();
+            if (Array.isArray(uuids) && uuids.length === 1) {
+              uuid = uuids[0];
+              await bridge.learn({ xuid, name, fallbackUuid: uuid });
+            }
+          } catch { /* ignore fallback error */ }
+        }
+        return uuid;
+      };
+
+      const readViaUuid = async () => {
+        // Resolve inside the snapshot (when held) to avoid LevelDB lock conflicts.
+        const leveldbUuid = await resolveUuid();
+        return leveldbUuid ? { leveldbUuid, data: await fileAdapter.readPlayer(leveldbUuid) } : null;
+      };
+
+      const result = serverRunning
+        ? await withSnapshot(adapter, readViaUuid)
+        : await readViaUuid();
+
+      if (!result) {
         return { xuid, name, online, needsBridge: true, supported: SUPPORTED };
       }
-
-      data = serverRunning
-        ? await withSnapshot(adapter, () => fileAdapter.readPlayer(leveldbUuid))
-        : await fileAdapter.readPlayer(leveldbUuid);
+      data = result.data;
     } else {
       const uuid = entry.xuid || xuid; // Java directory key is the player UUID
       if (online && serverRunning) await adapter.forceSave();

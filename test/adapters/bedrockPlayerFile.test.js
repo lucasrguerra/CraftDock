@@ -5,12 +5,30 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pkg from 'leveldb-zlib';
+import nbt from 'prismarine-nbt';
 import { createBedrockPlayerFile, parsePlayerBuffer } from '../../src/adapters/playerFile/bedrockPlayerFile.js';
 
 const { LevelDB } = pkg;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(here, '../fixtures/bedrock-player.nbt');
 const UUID = '1f633c09-f1f1-481c-b811-1cfa15b21973';
+// Real-world shape: querytarget's uniqueId is the player's MsaId, and the DB
+// holds a mapping record player_<MsaId> → { MsaId, SelfSignedId, ServerId }.
+const MSA_ID = '657cb1d4-99dd-3123-b27f-d0c27df79710';
+const SELF_SIGNED_ID = 'a257319c-50e9-3aad-aef3-8fc3e0d4e4c2';
+
+function mappingRecord() {
+  const str = (v) => ({ type: 'string', value: v });
+  return nbt.writeUncompressed({
+    type: 'compound',
+    name: '',
+    value: {
+      MsaId: str(MSA_ID),
+      SelfSignedId: str(SELF_SIGNED_ID),
+      ServerId: str('player_server_' + UUID),
+    },
+  }, 'little');
+}
 
 let tmp, config;
 
@@ -23,6 +41,8 @@ beforeAll(async () => {
   const db = new LevelDB(dbPath, { createIfMissing: true });
   await db.open();
   await db.put(Buffer.from('player_server_' + UUID, 'latin1'), buf);
+  await db.put(Buffer.from('player_' + MSA_ID, 'latin1'), mappingRecord());
+  await db.put(Buffer.from('player_' + SELF_SIGNED_ID, 'latin1'), mappingRecord());
   await db.close();
   config = { mcDataPath: tmp, mcWorldName: 'worlds' };
 });
@@ -61,6 +81,17 @@ describe('bedrockPlayerFile', () => {
     // e.g. "657cb1d4-99dd-3123-b27f-d0c27df79710" or corresponding int64 (-8589934591)
     const hit2 = await adapter.findByUniqueId('00000000-0000-0000-ffff-fffe00000001');
     expect(hit2).not.toBeNull();
+    expect(hit2.uuid).toBe(UUID);
+  });
+
+  it('findByUniqueId resolves via the player_<uuid> ServerId mapping record', async () => {
+    const adapter = createBedrockPlayerFile(config);
+    // querytarget uniqueId (= MsaId) — the case seen against a live server
+    const hit = await adapter.findByUniqueId(MSA_ID);
+    expect(hit).not.toBeNull();
+    expect(hit.uuid).toBe(UUID);
+    // SelfSignedId mapping record also resolves
+    const hit2 = await adapter.findByUniqueId(SELF_SIGNED_ID);
     expect(hit2.uuid).toBe(UUID);
   });
 
