@@ -16,6 +16,7 @@ import { createPropertiesService } from './services/propertiesService.js';
 import { createWorldService } from './services/worldService.js';
 import { createAuthService } from './services/authService.js';
 import { createSeedService } from './services/seedService.js';
+import { ensureFirstBootDefaults } from './services/firstBootService.js';
 import { createAppState } from './appState.js';
 import { startServer } from './server.js';
 
@@ -55,6 +56,9 @@ const propertiesService = createPropertiesService(config);
 const authService = createAuthService(config);
 const seedService = createSeedService({ config, propertiesService, logger: logger.child('seed') });
 const appState = createAppState({ config, dockerService, rconService, stdinService });
+
+// First boot of this data volume only: force the whitelist off (see service).
+await ensureFirstBootDefaults({ config, propertiesService, logger: logger.child('first-boot') });
 
 const extractZip = (zip, dest) =>
   new Promise((resolve, reject) => {
