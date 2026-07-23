@@ -12,8 +12,8 @@ The panel never modifies the Minecraft core. It controls the game container over
 |-----|--------------|
 | **Início / Status** | Start / Stop / Restart / Kill, live CPU / RAM / player count, edition badge |
 | **Console** | Real-time log stream over WebSocket + command input (RCON / stdin) |
-| **Jogadores** | Online list, whitelist / ban / op management, per-player kick & teleport — controls adapt to what the edition supports |
-| **Opções** | Friendly editor for `server.properties` (difficulty, PvP, max-players, gamemode, …) |
+| **Jogadores** | Persistent world player directory (paginated, searchable), per-player **inspector modal** (position, health, food, inventory, XP, gamemode — read straight from the world save), whitelist / ban / op management, kick & teleport — controls adapt to what the edition supports |
+| **Opções** | Friendly editor for `server.properties` (difficulty, PvP, max-players, gamemode, …) — keys missing from the file are pre-filled with their vanilla defaults |
 | **Mundo** | Download the world as `.zip`, upload/replace a world, regenerate a new world |
 | **Mapa** | Shows the world seed and embeds a seed map (mcseedmap.net) rendered for that seed |
 
@@ -27,6 +27,17 @@ CraftDock supports both Minecraft editions through an adapter layer, but they ar
 - **Bedrock** — commands go over the container's **stdin** (`docker attach`). `whitelist` becomes `allowlist`, and **ban / pardon have no native command** — those buttons are hidden in the UI.
 
 The edition is detected from the container's `TYPE` env var when `MC_EDITION=auto`, or forced with `MC_EDITION=java|bedrock`.
+
+---
+
+## Player inspector (world-save reads)
+
+The Players tab keeps a persistent directory of everyone who ever spawned in the world and can open a per-player detail modal with position, health, food, inventory, XP and gamemode. All of it is **read directly from the world save, read-only** — never via console commands:
+
+- **Java** — `world/playerdata/<uuid>.dat` (names seeded from `usercache.json`).
+- **Bedrock** — the world **LevelDB**. Bedrock never stores gamertags in the DB, so CraftDock builds the identity chain itself: XUID+name from `Player Spawned` log lines (`craftdock_players.json`), then — the first time you open an **online** player — `querytarget` yields the player's `uniqueId` UUID, which keys the DB's `player_<uuid>` mapping record pointing to the real `player_server_<uuid>` data record. The binding is persisted (`craftdock_bedrock_ids.json`), so offline reads work forever after.
+
+While the server is running, reads happen inside a save snapshot (`save hold`/`save query`/`save resume` on Bedrock, `save-all flush` on Java) so files are consistent.
 
 ---
 
@@ -79,7 +90,7 @@ npm test
 npm run dev            # loads .env automatically, hot-reloads on change
 ```
 
-Open <http://localhost:3000> and log in with your password.
+Open <http://localhost:8081> and log in with your password.
 
 > `npm run dev` uses `node --env-file=.env`, so your `.env` is loaded automatically.
 > `npm start` (production) does **not** load `.env` — it reads real environment
@@ -112,11 +123,11 @@ Both stacks share the **same** panel env block (only the edition, world folder a
 Minecraft image differ) and read their values from `.env` — see [`.env.example`](.env.example)
 for the canonical list.
 
-> **The panel uses `expose`, not a host port.** These stacks target a reverse proxy
-> (Coolify/Traefik routes your domain to port 3000). For **local** `docker compose`
-> testing without a proxy, uncomment the `ports: ["3000:3000"]` line in the compose
-> and set `NODE_ENV=development` in `.env`, then open <http://localhost:3000>.
-> (For everyday local work, `npm run dev` is simpler and needs no compose.)
+> **The panel publishes port 8081** (`${PORT:-8081}:8081`), so after `up` it is
+> reachable at <http://localhost:8081>. For local HTTP testing set
+> `NODE_ENV=development` in `.env` (otherwise the secure cookie is dropped over
+> plain HTTP). Behind Coolify/Traefik, point the service domain at container
+> port **8081** instead and drop the host publish if it conflicts.
 
 > **Rebuild after changing panel code:** `--build` is required the first time and
 > whenever you change the panel source. A runtime-only change (env var) just needs
@@ -158,7 +169,7 @@ The panel controls an existing, **fixed** container — it never recreates it or
 | `RCON_PORT` | | `25575` | RCON port (Java) |
 | `RCON_PASSWORD` | | *(empty)* | RCON password — **required for Java**, leave empty for Bedrock |
 | `MAP_VERSION` | | *(per edition)* | mcseedmap version segment override (e.g. `1.21-Java`, `26.30.0-Bedrock`) |
-| `PORT` | | `3000` | Port the panel listens on |
+| `PORT` | | `8081` | Port the panel listens on (and the host port in the composes) |
 | `NODE_ENV` | | `development` | `production` marks the session cookie `secure` (needs HTTPS) |
 | `LOG_LEVEL` | | `info` | `error` \| `warn` \| `info` \| `debug` |
 | `MAX_UPLOAD_MB` | | `1024` | Max world upload size (MB) |
@@ -180,21 +191,21 @@ The panel controls an existing, **fixed** container — it never recreates it or
 **`pull access denied for craftdock-panel` on `docker compose up`**
 The panel image is built locally, not pulled. Add `--build`: `docker compose up -d --build`.
 
-**`failed to bind host port 0.0.0.0:3000: address already in use`**
-Something else is on port 3000 — usually a leftover `npm run dev`. Find and stop it:
+**`failed to bind host port 0.0.0.0:8081: address already in use`**
+Something else is on port 8081 — usually a leftover `npm run dev`. Find and stop it:
 ```powershell
-Get-NetTCPConnection -LocalPort 3000 -State Listen        # find the PID
+Get-NetTCPConnection -LocalPort 8081 -State Listen        # find the PID
 Stop-Process -Id <PID> -Force                             # stop it
 ```
 Then bring the stack up again.
 
-**`ERR_CONNECTION_REFUSED` even though the panel logs "listening on :3000"**
+**`ERR_CONNECTION_REFUSED` even though the panel logs "listening on :8081"**
 The container is listening internally but the host port wasn't published — typically a container that was *created* during a failed port-bind and then only restarted. Recreate it:
 ```bash
 docker compose -f <compose-file> down
 docker compose -f <compose-file> up -d --force-recreate
 ```
-Confirm the host is listening: `Get-NetTCPConnection -LocalPort 3000 -State Listen`.
+Confirm the host is listening: `Get-NetTCPConnection -LocalPort 8081 -State Listen`.
 
 **Login succeeds (no error) but the page stays on the login screen**
 The session cookie isn't being stored. It's marked `secure` (from `NODE_ENV=production`) while you're on plain `http://localhost` — browsers drop secure cookies over HTTP. For local HTTP testing set `NODE_ENV=development`; in production serve over HTTPS. (Behind a reverse proxy, the app already trusts `X-Forwarded-Proto` via `trust proxy`.)
@@ -205,8 +216,8 @@ The Minecraft container is missing `stdin_open: true` + `tty: true`. Add both an
 **Options tab changes don't persist after restart**
 The Minecraft service is missing `OVERRIDE_SERVER_PROPERTIES=false`.
 
-**Coolify: `Bind for 0.0.0.0:3000 failed: port is already allocated`**
-Don't publish the panel's port on the host under Coolify — its Traefik reaches the container over the network. Use `expose: ["3000"]` (not `ports:`) on `craftdock-panel` and set the service **domain** in Coolify pointing to port **3000**. Keep `ports:` only on the Minecraft service (the raw game port).
+**Coolify: `Bind for 0.0.0.0:8081 failed: port is already allocated`**
+Don't publish the panel's port on the host under Coolify — its Traefik reaches the container over the network. Replace the panel's `ports:` with `expose: ["8081"]` and set the service **domain** in Coolify pointing to port **8081**. Keep `ports:` only on the Minecraft service (the raw game port).
 
 **Coolify / docker compose: login fails, or warning `The "…" variable is not set. Defaulting to a blank string.`**
 The `…` is the tail of your bcrypt hash — bcrypt hashes contain `$`, which docker compose interprets as variable interpolation, corrupting the hash. **Use `ADMIN_PASSWORD_HASH_B64`** (the base64 line from `npm run hash`) instead of the raw `ADMIN_PASSWORD_HASH` — base64 has no `$`, so nothing gets mangled. (Alternatively, keep the raw hash but escape every `$` as `$$`.)
@@ -235,11 +246,16 @@ src/
 ├── main.js            # composition root (wires real dependencies)
 ├── config.js          # env var loading + validation
 ├── logger.js          # structured JSON logger
+├── healthcheck.js     # container healthcheck script
 ├── appState.js        # cached edition/adapter resolution
 ├── middleware/        # auth (HTTP + socket handshake)
-├── services/          # docker, rcon, stdin, properties, world, auth, seed
+├── services/          # docker, rcon, stdin, properties, world, auth, seed,
+│                      # playerDirectory, playerDetailService, bedrockIdentityBridge
 ├── adapters/          # ServerAdapter: java (RCON) / bedrock (stdin)
+│   └── playerFile/    # read-only world-save readers (Java NBT / Bedrock LevelDB)
 ├── routes/            # auth, status, players, properties, world
 ├── sockets/           # logs stream + status push namespaces
 └── public/            # vanilla-JS tabbed SPA (Tailwind via CDN)
 ```
+
+CraftDock also keeps two metadata files at the data root (bundled into world backups): `craftdock_players.json` (persistent XUID→name player directory) and `craftdock_bedrock_ids.json` (Bedrock identity bridge). See [CLAUDE.md](CLAUDE.md) for the full architecture and contribution conventions (numbered feature branches, `#N:` commit prefix).
